@@ -1660,8 +1660,8 @@ async function analyzeOrderFlags(order) {
       itemFlags[id] = 'new';
       yellowCount++;
     } else {
-      // Flag if > 2.5x average AND above the historical max
-      if (currentQty > hist.avg * 2.5 && currentQty > hist.max) {
+      // Flag if above the historical max OR more than 2x the average
+      if (currentQty > hist.max || currentQty > hist.avg * 2) {
         itemFlags[id] = 'high';
         redCount++;
       }
