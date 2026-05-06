@@ -1171,22 +1171,6 @@ async function createTables() {
 // ===========================================================
 // LOGIN
 // ===========================================================
-document.addEventListener('DOMContentLoaded', function() {
-document.getElementById('loginUser').addEventListener('change', function() {
-  const val = this.value;
-  const pwGroup = document.getElementById('passwordGroup');
-  if (PROTECTED_USERS.includes(val)) {
-    pwGroup.style.display = 'block';
-  } else {
-    pwGroup.style.display = 'none';
-  }
-  document.getElementById('loginError').style.display = 'none';
-});
-
-document.getElementById('loginPassword').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') doLogin();
-});
-
 function doLogin() {
   const userVal = document.getElementById('loginUser').value;
   if (!userVal) { alert('Please select your name.'); return; }
@@ -1221,7 +1205,22 @@ function doLogout() {
   document.getElementById('passwordGroup').style.display = 'none';
 }
 
-}); // end DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('loginUser').addEventListener('change', function() {
+    const val = this.value;
+    const pwGroup = document.getElementById('passwordGroup');
+    if (PROTECTED_USERS.includes(val)) {
+      pwGroup.style.display = 'block';
+    } else {
+      pwGroup.style.display = 'none';
+    }
+    document.getElementById('loginError').style.display = 'none';
+  });
+
+  document.getElementById('loginPassword').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+});
 
 // ===========================================================
 // TABS
