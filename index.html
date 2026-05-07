@@ -1240,6 +1240,25 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('loginPassword').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
   });
+
+  // Load supervisor list from Supabase so new supervisors appear without re-uploading
+  fetch(`${SUPABASE_URL}/rest/v1/kencal_supervisors?select=name&active=eq.true&order=name.asc&limit=200`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Accept: 'application/json' }
+  }).then(r => r.json()).then(sups => {
+    if (!sups || !sups.length) return;
+    const sel = document.getElementById('loginUser');
+    const group = sel.querySelector('optgroup[label="Supervisors"]');
+    if (group) group.innerHTML = '';
+    const optgroup = group || document.createElement('optgroup');
+    optgroup.label = 'Supervisors';
+    sups.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = 'sup_' + s.name;
+      opt.textContent = s.name;
+      optgroup.appendChild(opt);
+    });
+    if (!group) sel.appendChild(optgroup);
+  }).catch(() => {});
 });
 
 // ===========================================================
