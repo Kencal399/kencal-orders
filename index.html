@@ -2021,7 +2021,12 @@ async function deleteOrder(id) {
 // CREATE ORDER (Mary manual entry)
 // ===========================================================
 function showCreateOrder() {
-  document.getElementById('createOrderPanel').classList.toggle('hidden');
+  const panel = document.getElementById('createOrderPanel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) {
+    populateCreateOrderLocations();
+    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 }
 
 function populateCreateOrderLocations() {
