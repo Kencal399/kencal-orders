@@ -838,13 +838,14 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <div class="divider"></div>
       <div id="imperialSummary" class="hidden">
         <div class="card-title">Order Summary</div>
+        <p style="font-size:12px;color:#666;margin-bottom:10px">Review account numbers below. Items highlighted in <span style="background:#fff8e1;padding:1px 6px;border-radius:3px">yellow</span> have no Imperial account mapped yet — they will go to the bulk warehouse account. Use the <strong>Override</strong> toggle to flip individual items between rebill and non-rebill.</p>
         <table class="review-table" id="imperialSummaryTable">
-          <thead><tr><th>Ship To Acct</th><th>Location</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivery Date</th><th>Rebill</th></tr></thead>
+          <thead><tr><th>Ship To Acct</th><th>Location</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivery Date</th><th>Rebill</th><th>Override</th></tr></thead>
           <tbody id="imperialSummaryBody"></tbody>
         </table>
         <div class="flex-gap mt-12">
           <button class="btn btn-green" onclick="exportImperialCSV()"> Download Imperial CSV</button>
-          <button class="btn btn-outline" onclick="markOrdersSent()">OK Mark as Sent to Imperial</button>
+          <button class="btn btn-outline" onclick="markOrdersSent()">✓ Mark as Sent to Imperial</button>
         </div>
       </div>
     </div>
@@ -1059,39 +1060,58 @@ const SUPERVISOR_LOCATIONS = {
   "Jorge":      ["50550","51150","51154","51174","51200","51050","51350","51352","51354","51354b","50900","50909","50913","50921","50922","50675","50677","50689","50775","50150","51640","23750","51600","51600b","51600c","51635","51635b","51650","51695","51530","51610","51645","51616","51690","51725","5007ex","51480","51481c","51483d","51485a","51485b","51485c","51485e","51486a","51730","51524c","80000CT","50350","51615","51560","51560c","51710","51720"]
 };
 
+// Imperial account mapping: job number -> { standard, rebill }
+// standard = regular account, rebill = billed-back-to-client account
+// Warehouse bulk orders always use: standard=1754002, rebill=1754200
+// 399 Knollwood building itself: standard=1754016, rebill=1754160
 const IMPERIAL_JOB_MAP = {
-  "20375":{"standard":"1754002","rebill":"1754016"},
-  "20050":{"standard":"1754007","rebill":"1754700"},
-  "21625":{"standard":"1754009","rebill":"1754900"},
-  "22100":{"standard":"1754012","rebill":"1754120"},
-  "22126":{"standard":"1754025","rebill":"1754250"},
-  "50900":{"standard":"1754013","rebill":"1754310"},
-  "50913":{"standard":"1754013","rebill":"1754310"},
-  "51695":{"standard":"1754451","rebill":"1754450"},
-  "22150":{"standard":"1754014","rebill":"1754410"},
-  "23125":{"standard":"1754020","rebill":"1754210"},
-  "23275":{"standard":"1754021","rebill":"1754211"},
-  "51150":{"standard":"1754018","rebill":"1754180"},
-  "51200":{"standard":"1754019","rebill":"1754190"},
-  "51350":{"standard":"1754024","rebill":"1754204"},
-  "51354":{"standard":"1754027","rebill":"1754270"},
-  "11170":{"standard":"1754026","rebill":"1754260"},
-  "23425":{"standard":"1754029","rebill":"1754290"},
-  "22310":{"standard":"1754030","rebill":"1754330"},
-  "23137":{"standard":"1754031","rebill":"1754103"},
-  "51480":{"standard":"1754032","rebill":"1754302"},
-  "10050":{"standard":"1754004","rebill":"1754400"},
-  "40525":{"standard":"1754006","rebill":"1754600"},
-  "11240":{"standard":"1754223","rebill":"1754622"},
-  "51600b":{"standard":"1754224","rebill":"1754422"},
-  "51635":{"standard":"1754413","rebill":"1754414"},
-  "50350":{"standard":"1754003","rebill":"1754300"},
-  "51560":{"standard":"1754580","rebill":"1754850"},
-  "23715":{"standard":"1754217","rebill":"1754216"},
-  "23716":{"standard":"1754218"},
-  "11300":{"standard":"1754271","rebill":"1754272"},
-  "50675":{"standard":"1754011","rebill":"1754110"},
-  "20625":{"standard":"1754001","rebill":"1754100"}
+  // ── CONFIRMED MAPPINGS ──────────────────────────────────────
+  "10050":  {"standard":"1754004","rebill":"1754400"},  // 480 North Broadway, Yonkers
+  "10850":  {"standard":"1754015","rebill":"1754150"},  // Securitas-Diebold, 3 Westchester Plaza
+  "11170":  {"standard":"1754026","rebill":"1754260"},  // Greenburgh Eleven UFSD
+  "11300":  {"standard":"1754272","rebill":"1754271"},  // Robins Nest, 3 Phelps Lane
+  "20050":  {"standard":"1754007","rebill":"1754700"},  // 1 Gateway Plaza, Port Chester
+  "20375":  {"standard":"1754016","rebill":"1754160"},  // 399 Knollwood Rd - building itself
+  "20625":  {"standard":"1754001","rebill":"1754100"},  // 2525 Palmer / Keio Academy
+  "20800":  {"standard":"1754001","rebill":"1754100"},  // Keio Academy
+  "21625":  {"standard":"1754009","rebill":"1754900"},  // 2975 Westchester Ave
+  "22100":  {"standard":"1754012","rebill":"1754120"},  // 1133 Westchester Ave
+  "22126":  {"standard":"1754025","rebill":"1754250"},  // Hospital for Special Surgery
+  "22150":  {"standard":"1754014","rebill":"1754410"},  // 440 Mamaroneck Ave
+  "22310":  {"standard":"1754030","rebill":"1754330"},  // Zyloware / 8 Slater St
+  "22800":  {"standard":"1754017","rebill":"1754170"},  // 3000 Westchester Ave
+  "23125":  {"standard":"1754020","rebill":"1754210"},  // 450 Mamaroneck Ave
+  "23137":  {"standard":"1754031","rebill":"1754103"},  // Rothman Orthopedics
+  "23275":  {"standard":"1754021","rebill":"1754211"},  // Memorial Sloan-Kettering
+  "23425":  {"standard":"1754029","rebill":"1754290"},  // Jantile Inc
+  "23715":  {"standard":"1754217","rebill":"1754216"},  // YWCA White Plains - 515 North
+  "23716":  {"standard":"1754218"},                     // YWCA White Plains - 69 North (no rebill)
+  "40525":  {"standard":"1754006","rebill":"1754600"},  // 1215 Zerega Avenue, Bronx
+  "45525":  {"standard":"1754022","rebill":"1754220"},  // 3239 Route 112, Brookhaven
+  "50350":  {"standard":"1754003","rebill":"1754300"},  // Perkin Elmer, 710 Bridgeport Ave
+  "50675":  {"standard":"1754011","rebill":"1754110"},  // 1 Fawcett Place, Greenwich
+  "50900":  {"standard":"1754013","rebill":"1754310"},  // 75 Holly Hill Lane
+  "50913":  {"standard":"1754013","rebill":"1754310"},  // Greenwich Hospital - 75 Holly Hill
+  "51150":  {"standard":"1754018","rebill":"1754180"},  // 1 Dock Street, Stamford
+  "51200":  {"standard":"1754019","rebill":"1754190"},  // 1 Sound Shore Drive, Greenwich
+  "51350":  {"standard":"1754024","rebill":"1754204"},  // 500 W Putnam Ave, Greenwich
+  "51354":  {"standard":"1754027","rebill":"1754270"},  // Greenwich Hospital - Yale New Haven
+  "51480":  {"standard":"1754032","rebill":"1754302"},  // Greenwich Office Park
+  "51560":  {"standard":"1754580","rebill":"1754850"},  // 10 Westport Road, Wilton
+  "51600":  {"standard":"1754206","rebill":"1754205"},  // 445 Hamilton Ave, Ivy Realty
+  "51600b": {"standard":"1754224","rebill":"1754422"},  // LPC - 2560 Dixwell, Hamden
+  "51635":  {"standard":"1754413","rebill":"1754414"},  // Greenwich Hospital - 260 Long Ridge Rd
+  "51650":  {"standard":"1754451","rebill":"1754450"},  // Yale New Haven Health - 55 Holly Hill
+  "51695":  {"standard":"1754019","rebill":"1754190"},  // Greenwich Hospital - 15 Valley / 1 Sound Shore
+  "51725":  {"standard":"1754853","rebill":"1754854"},  // 1 Station Plaza, Stamford
+  "11240":  {"standard":"1754223","rebill":"1754622"},  // 500 White Plains Road, Tarrytown
+
+  // ── NOT YET MAPPED — will use bulk warehouse account ────────
+  // 10075, 10175, 11150, 11220, 20400, 20600, 21200, 23400,
+  // 23720, 30125, 30650, 30720, 30730, 30800, 40100, 40101,
+  // 40500, 40600, 45625, 50550, 50775, 51050, 51300, 51530,
+  // 51540, 51580, 51610, 51640, 51645, 51680, 51690, 51705,
+  // 51710, 51720, 51730
 };
 
 // Location display names
@@ -2082,7 +2102,7 @@ function renderImperialOrders(orders) {
         const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
         acct = order.rebill && imperialAccts?.rebill ? imperialAccts.rebill : imperialAccts?.standard || '1754002';
       } else {
-        acct = order.rebill ? '1754016' : '1754002';
+        acct = order.rebill ? '1754200' : '1754002'; // warehouse bulk: rebill=1754200, standard=1754002
       }
       return `
         <div class="order-card" style="margin-bottom:8px">
@@ -2126,27 +2146,41 @@ function buildImperialSummary() {
   const tbody = document.getElementById('imperialSummaryBody');
   tbody.innerHTML = '';
 
+  // Store per-item overrides: key = orderId_itemId, value = rebill bool
+  window._imperialRebillOverrides = {};
+
   orders.forEach(order => {
     let acct;
+    let unmapped = false;
     if (order.is_dropship) {
       const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
-      acct = order.rebill && imperialAccts?.rebill ? imperialAccts.rebill : imperialAccts?.standard || '1754002';
+      if (!imperialAccts) {
+        unmapped = true;
+        acct = order.rebill ? '1754200' : '1754002';
+      } else {
+        acct = order.rebill && imperialAccts?.rebill ? imperialAccts.rebill : imperialAccts?.standard;
+      }
     } else {
-      acct = order.rebill ? '1754016' : '1754002';
+      acct = order.rebill ? '1754200' : '1754002';
     }
     const delivDate = order.delivery_date || '';
 
     Object.entries(order.items || {}).forEach(([id, item]) => {
+      const overrideKey = `${order.id}_${id}`;
+      window._imperialRebillOverrides[overrideKey] = order.rebill;
       const tr = document.createElement('tr');
+      if (unmapped) tr.style.background = '#fff8e1';
+      tr.id = `impRow_${overrideKey}`;
       tr.innerHTML = `
-        <td>${acct}</td>
+        <td id="impAcct_${overrideKey}">${acct}${unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ NOT MAPPED</span>' : ''}</td>
         <td>${order.location_name}</td>
         <td>${id}</td>
         <td>${item.name}</td>
         <td>${item.qty}</td>
         <td>${item.unit}</td>
         <td>${delivDate || '<span style="color:var(--red)">! Set date</span>'}</td>
-        <td>${order.rebill ? '<span class="badge badge-pending">YES</span>' : 'No'}</td>`;
+        <td id="impRebill_${overrideKey}">${order.rebill ? '<span class="badge badge-pending">YES</span>' : 'No'}</td>
+        <td><button class="btn btn-outline btn-xs" onclick="toggleRebillOverride('${overrideKey}','${order.job_number}','${order.is_dropship}')">Flip</button></td>`;
       tbody.appendChild(tr);
     });
   });
@@ -2154,22 +2188,51 @@ function buildImperialSummary() {
   document.getElementById('imperialSummary').classList.remove('hidden');
 }
 
+function toggleRebillOverride(key, job, isDropship) {
+  const overrides = window._imperialRebillOverrides;
+  const newRebill = !overrides[key];
+  overrides[key] = newRebill;
+
+  // Recalculate the account number
+  let acct;
+  if (isDropship === 'true') {
+    const imperialAccts = IMPERIAL_JOB_MAP[job];
+    if (!imperialAccts) {
+      acct = newRebill ? '1754200' : '1754002';
+    } else {
+      acct = newRebill && imperialAccts.rebill ? imperialAccts.rebill : imperialAccts.standard;
+    }
+  } else {
+    acct = newRebill ? '1754200' : '1754002';
+  }
+
+  document.getElementById(`impAcct_${key}`).textContent = acct;
+  document.getElementById(`impRebill_${key}`).innerHTML = newRebill ? '<span class="badge badge-pending">YES</span>' : 'No';
+  document.getElementById(`impRow_${key}`).style.background = newRebill ? '#fff8e1' : '';
+}
+
 function exportImperialCSV() {
   const orders = (window._imperialOrders || []).filter(o => selectedOrdersForExport.has(o.id));
+  const overrides = window._imperialRebillOverrides || {};
   const rows = [['Account Number','Ship To Account','Item Number','Description','Order Quantity','Unit of Measure','Requested Delivery Date','Rebill']];
 
   orders.forEach(order => {
-    let acct;
-    if (order.is_dropship) {
-      const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
-      acct = order.rebill && imperialAccts?.rebill ? imperialAccts.rebill : imperialAccts?.standard || '1754002';
-    } else {
-      // All warehouse orders ship to 399 Knollwood Road
-      acct = order.rebill ? '1754016' : '1754002';
-    }
     const delivDate = order.delivery_date || '';
     Object.entries(order.items || {}).forEach(([id, item]) => {
-      rows.push(['131449', acct, id, item.name, item.qty, item.unit, delivDate, order.rebill ? 'Yes' : 'No']);
+      const overrideKey = `${order.id}_${id}`;
+      const isRebill = overrideKey in overrides ? overrides[overrideKey] : order.rebill;
+      let acct;
+      if (order.is_dropship) {
+        const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
+        if (!imperialAccts) {
+          acct = isRebill ? '1754200' : '1754002';
+        } else {
+          acct = isRebill && imperialAccts.rebill ? imperialAccts.rebill : imperialAccts.standard;
+        }
+      } else {
+        acct = isRebill ? '1754200' : '1754002';
+      }
+      rows.push(['131449', acct, id, item.name, item.qty, item.unit, delivDate, isRebill ? 'Yes' : 'No']);
     });
   });
 
