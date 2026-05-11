@@ -1775,6 +1775,7 @@ async function submitOrder() {
     const locName = LOCATION_NAMES[supCurrentJob] || supCurrentJob;
     const orderRef = `ORD-${Date.now()}`;
     const isDS = DROPSHIP_JOBS.has(supCurrentJob);
+    const itemCount = Object.keys(supQtys).length;
 
     const orderData = {
       order_ref: orderRef,
@@ -1784,6 +1785,7 @@ async function submitOrder() {
       items: supQtys,
       status: 'pending',
       is_dropship: isDS,
+      item_count: itemCount,
       created_at: new Date().toISOString()
     };
 
@@ -1793,6 +1795,9 @@ async function submitOrder() {
       throw new Error(result.error.message);
     }
 
+    // Send email notification to Mary
+    notifyMary(supCurrentName, locName, supCurrentJob, itemCount).catch(() => {});
+
     document.getElementById('supReviewArea').classList.add('hidden');
     document.getElementById('supConfirmArea').classList.remove('hidden');
     supQtys = {};
@@ -1801,6 +1806,41 @@ async function submitOrder() {
     console.error(e);
   }
   hideLoading();
+}
+
+async function notifyMary(supervisorName, locationName, jobNumber, itemCount) {
+  const RESEND_KEY = 're_EEi7uwZJ_Ms1vfKC9dkWm5T3nULViBX5L';
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${RESEND_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: 'Kencal Orders <onboarding@resend.dev>',
+      to: 'mcintron@kencalmaintenance.com',
+      subject: `New order submitted — ${locationName}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto">
+          <div style="background:#1F4E79;padding:16px 20px;border-radius:8px 8px 0 0">
+            <h2 style="color:white;margin:0;font-size:18px">Kencal — New Order Submitted</h2>
+          </div>
+          <div style="background:#f8f9fa;padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px">
+            <p style="font-size:14px;color:#333">
+              <b>${supervisorName}</b> has submitted an order for <b>${locationName}</b>
+              ${jobNumber ? ' (Job #' + jobNumber + ')' : ''} with <b>${itemCount} item(s)</b>.
+            </p>
+            <p style="font-size:14px;color:#333">Please log in to review and approve it.</p>
+            <a href="https://kencal399.github.io/kencal-orders"
+               style="display:inline-block;background:#1F4E79;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:8px">
+              Review Order →
+            </a>
+            <p style="font-size:11px;color:#888;margin-top:16px">Kencal Maintenance Corp — Supply Order System</p>
+          </div>
+        </div>
+      `
+    })
+  });
 }
 
 function resetSupForm() {
