@@ -1026,6 +1026,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <input type="date" id="wtUsageTo" onchange="loadWTUsage()">
         <button class="btn btn-primary btn-sm" onclick="loadWTUsage()"> Load</button>
         <button class="btn btn-green btn-sm" onclick="printWTUsage()"> Print / PDF</button>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
+          <span style="font-size:12px;color:#555">Group by:</span>
+          <select id="wtUsageGroupBy" onchange="reRenderWTUsage()" style="padding:5px 8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px">
+            <option value="date">Date</option>
+            <option value="location">Location</option>
+          </select>
+        </div>
       </div>
       <div id="wtUsageContent">
         <div class="empty-state"><div class="icon"></div><p>Select a date range and click Load.</p></div>
@@ -3745,49 +3752,177 @@ async function loadWTUsage() {
 
     let html = '';
     let transactionCount = 0;
+    const groupBy = document.getElementById('wtUsageGroupBy') ? document.getElementById('wtUsageGroupBy').value : 'date';
 
-    Object.values(byDateJob).forEach(function(group) {
-      transactionCount++;
-      const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-
-      html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
-        '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
-        '<div><strong>' + group.jobName + '</strong>' +
-        (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') +
-        '</div>' +
-        '<div style="font-size:12px;opacity:0.8">Job # ' + group.job + ' &nbsp;&nbsp; ' + group.date + ' &nbsp;&nbsp; ' + typeLabel + '</div>' +
-        '</div>' +
-        '<table class="review-table" style="width:100%">' +
-        '<thead><tr><th>Item Number</th><th>Item Description</th><th>Qty</th><th>Measure</th><th>Resale?</th><th>Suggested Resale Price</th><th>Notes</th></tr></thead><tbody>';
-
-      group.items.forEach(function(item) {
-        const resaleInfo = getResalePrice(group.job, item.item_number, 0);
-        const isResale = resaleInfo.markup > 0;
-        const resaleFlag = isResale ? '<span style="color:var(--green);font-weight:600">OK Yes</span>' : '<span style="color:var(--gray)">No</span>';
-        const resaleLabel = resaleInfo.isOverride ? ' custom rate' : resaleInfo.isDefault ? ' est.' : '';
-        const resalePrice = isResale ? (resaleInfo.resale ? '$' + resaleInfo.resale + ' <span style="color:var(--gray);font-size:11px">(' + resaleInfo.markup + '%' + resaleLabel + ')</span>' : '<span style="color:var(--orange)">Cost price not on file -- enter manually</span>') : '--';
-
-        html += '<tr>' +
-          '<td>' + item.item_number + '</td>' +
-          '<td>' + item.item_description + '</td>' +
-          '<td><strong>' + item.quantity + '</strong></td>' +
-          '<td>' + item.unit + '</td>' +
-          '<td>' + resaleFlag + '</td>' +
-          '<td>' + resalePrice + '</td>' +
-          '<td style="font-size:11px;color:var(--gray-dark)">' + (item.notes || '') + '</td>' +
-          '</tr>';
+    if (groupBy === 'location') {
+      // Group all entries by location regardless of date
+      const byLocation = {};
+      Object.values(byDateJob).forEach(function(group) {
+        const key = group.job;
+        if (!byLocation[key]) {
+          byLocation[key] = { job: group.job, jobName: group.jobName, supervisor: group.supervisor, destType: group.destType, items: [], dates: new Set() };
+        }
+        group.items.forEach(function(item) {
+          // Merge duplicate item numbers — add quantities
+          const existing = byLocation[key].items.find(i => i.item_number === item.item_number);
+          if (existing) {
+            existing.quantity = parseFloat(existing.quantity) + parseFloat(item.quantity);
+          } else {
+            byLocation[key].items.push({...item});
+          }
+          byLocation[key].dates.add(group.date);
+        });
       });
 
-      html += '</tbody></table></div>';
-    });
+      Object.values(byLocation).sort((a,b) => a.jobName.localeCompare(b.jobName)).forEach(function(group) {
+        transactionCount++;
+        const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
+        const dateRange = [...group.dates].sort().join(', ');
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
+
+        html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
+          '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
+          '<div><strong>' + group.jobName + '</strong>' +
+          (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') +
+          '</div>' +
+          '<div style="font-size:12px;opacity:0.8">Job # ' + group.job + ' &nbsp;&nbsp; ' + typeLabel + '<br>' + dateRange + '</div>' +
+          '</div>' +
+          '<table class="review-table" style="width:100%">' +
+          '<thead><tr><th>Item Number</th><th>Item Description</th><th>Total Qty</th><th>Measure</th><th>Resale?</th><th>Suggested Resale Price</th><th>Notes</th></tr></thead><tbody>' + bradyNote;
+
+        group.items.forEach(function(item) {
+          const resaleInfo = getResalePrice(group.job, item.item_number, 0);
+          const isResale = resaleInfo.fromFile ? resaleInfo.resale > 0 : resaleInfo.markup > 0;
+          const resaleFlag = isResale ? '<span style="color:var(--green);font-weight:600">Yes</span>' : '<span style="color:var(--gray)">No</span>';
+          const resalePrice = resaleInfo.resale ? '<b>$' + resaleInfo.resale.toFixed(2) + '</b>' + (resaleInfo.markup ? ' <span style="color:#888;font-size:10px">(+' + resaleInfo.markup.toFixed(0) + '%)</span>' : '') : '<span style="color:var(--orange);font-size:11px">Enter manually</span>';
+          const vendorDisplay = resaleInfo.vendor || 'Imperial/Strauss';
+
+          html += '<tr>' +
+            '<td style="font-family:monospace;font-size:11px">' + item.item_number + '</td>' +
+            '<td>' + item.item_description + '</td>' +
+            '<td><strong>' + item.quantity + '</strong></td>' +
+            '<td>' + item.unit + '</td>' +
+            '<td>' + resaleFlag + '</td>' +
+            '<td>' + resalePrice + '</td>' +
+            '<td style="font-size:11px;color:var(--gray-dark)">' + vendorDisplay + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+      });
+
+    } else {
+      // Original: group by date
+      Object.values(byDateJob).forEach(function(group) {
+        transactionCount++;
+        const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
+
+        html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
+          '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
+          '<div><strong>' + group.jobName + '</strong>' +
+          (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') +
+          '</div>' +
+          '<div style="font-size:12px;opacity:0.8">Job # ' + group.job + ' &nbsp;&nbsp; ' + group.date + ' &nbsp;&nbsp; ' + typeLabel + '</div>' +
+          '</div>' +
+          '<table class="review-table" style="width:100%">' +
+          '<thead><tr><th>Item Number</th><th>Item Description</th><th>Qty</th><th>Measure</th><th>Resale?</th><th>Suggested Resale Price</th><th>Notes</th></tr></thead><tbody>' + bradyNote;
+
+        group.items.forEach(function(item) {
+          const resaleInfo = getResalePrice(group.job, item.item_number, 0);
+          const isResale = resaleInfo.fromFile ? resaleInfo.resale > 0 : resaleInfo.markup > 0;
+          const resaleFlag = isResale ? '<span style="color:var(--green);font-weight:600">Yes</span>' : '<span style="color:var(--gray)">No</span>';
+          const resalePrice = resaleInfo.resale ? '<b>$' + resaleInfo.resale.toFixed(2) + '</b>' + (resaleInfo.markup ? ' <span style="color:#888;font-size:10px">(+' + resaleInfo.markup.toFixed(0) + '%)</span>' : '') : '<span style="color:var(--orange);font-size:11px">Enter manually</span>';
+          const vendorDisplay = resaleInfo.vendor || 'Imperial/Strauss';
+
+          html += '<tr>' +
+            '<td style="font-family:monospace;font-size:11px">' + item.item_number + '</td>' +
+            '<td>' + item.item_description + '</td>' +
+            '<td><strong>' + item.quantity + '</strong></td>' +
+            '<td>' + item.unit + '</td>' +
+            '<td>' + resaleFlag + '</td>' +
+            '<td>' + resalePrice + '</td>' +
+            '<td style="font-size:11px;color:var(--gray-dark)">' + vendorDisplay + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+      });
+    }
 
     html = '<div class="alert alert-info mb-8" style="font-size:12px">' + transactionCount + ' WinTeam transactions to enter &nbsp;&nbsp; ' + dists.length + ' line items &nbsp;&nbsp; ' + from + ' to ' + to + '</div>' + html;
     container.innerHTML = html;
-    container._data = { from, to, groups: Object.values(byDateJob) };
+    container._data = { from, to, groups: Object.values(byDateJob), dists };
+    container._rawData = { from, to, byDateJob, dists };
 
   } catch(e) {
     container.innerHTML = '<div class="alert alert-error">Error: ' + e.message + '</div>';
   }
+}
+
+function reRenderWTUsage() {
+  const container = document.getElementById('wtUsageContent');
+  if (!container._rawData) return; // no data loaded yet
+  const { from, to, byDateJob, dists } = container._rawData;
+
+  // Re-run the rendering logic with the new grouping
+  let html = '';
+  let transactionCount = 0;
+  const groupBy = document.getElementById('wtUsageGroupBy').value;
+
+  if (groupBy === 'location') {
+    const byLocation = {};
+    Object.values(byDateJob).forEach(function(group) {
+      const key = group.job;
+      if (!byLocation[key]) byLocation[key] = { job: group.job, jobName: group.jobName, supervisor: group.supervisor, destType: group.destType, items: [], dates: new Set() };
+      group.items.forEach(function(item) {
+        const existing = byLocation[key].items.find(i => i.item_number === item.item_number);
+        if (existing) existing.quantity = parseFloat(existing.quantity) + parseFloat(item.quantity);
+        else byLocation[key].items.push({...item});
+        byLocation[key].dates.add(group.date);
+      });
+    });
+    Object.values(byLocation).sort((a,b) => a.jobName.localeCompare(b.jobName)).forEach(function(group) {
+      transactionCount++;
+      const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
+      const dateRange = [...group.dates].sort().join(', ');
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
+      html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
+        '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
+        '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
+        '<div style="font-size:12px;opacity:0.8">Job # ' + group.job + ' &nbsp;&nbsp; ' + typeLabel + '<br>' + dateRange + '</div></div>' +
+        '<table class="review-table" style="width:100%"><thead><tr><th>Item Number</th><th>Item Description</th><th>Total Qty</th><th>Measure</th><th>Resale?</th><th>Suggested Resale Price</th><th>Vendor</th></tr></thead><tbody>' + bradyNote;
+      group.items.forEach(function(item) {
+        const ri = getResalePrice(group.job, item.item_number, 0);
+        const isResale = ri.fromFile ? ri.resale > 0 : ri.markup > 0;
+        const resaleFlag = isResale ? '<span style="color:var(--green);font-weight:600">Yes</span>' : '<span style="color:var(--gray)">No</span>';
+        const resalePrice = ri.resale ? '<b>$' + ri.resale.toFixed(2) + '</b>' : '<span style="color:var(--orange);font-size:11px">Enter manually</span>';
+        html += '<tr><td style="font-family:monospace;font-size:11px">' + item.item_number + '</td><td>' + item.item_description + '</td><td><strong>' + item.quantity + '</strong></td><td>' + item.unit + '</td><td>' + resaleFlag + '</td><td>' + resalePrice + '</td><td style="font-size:11px">' + (ri.vendor || 'Imperial/Strauss') + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+  } else {
+    Object.values(byDateJob).forEach(function(group) {
+      transactionCount++;
+      const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
+      html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
+        '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
+        '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
+        '<div style="font-size:12px;opacity:0.8">Job # ' + group.job + ' &nbsp;&nbsp; ' + group.date + ' &nbsp;&nbsp; ' + typeLabel + '</div></div>' +
+        '<table class="review-table" style="width:100%"><thead><tr><th>Item Number</th><th>Item Description</th><th>Qty</th><th>Measure</th><th>Resale?</th><th>Suggested Resale Price</th><th>Vendor</th></tr></thead><tbody>' + bradyNote;
+      group.items.forEach(function(item) {
+        const ri = getResalePrice(group.job, item.item_number, 0);
+        const isResale = ri.fromFile ? ri.resale > 0 : ri.markup > 0;
+        const resaleFlag = isResale ? '<span style="color:var(--green);font-weight:600">Yes</span>' : '<span style="color:var(--gray)">No</span>';
+        const resalePrice = ri.resale ? '<b>$' + ri.resale.toFixed(2) + '</b>' : '<span style="color:var(--orange);font-size:11px">Enter manually</span>';
+        html += '<tr><td style="font-family:monospace;font-size:11px">' + item.item_number + '</td><td>' + item.item_description + '</td><td><strong>' + item.quantity + '</strong></td><td>' + item.unit + '</td><td>' + resaleFlag + '</td><td>' + resalePrice + '</td><td style="font-size:11px">' + (ri.vendor || 'Imperial/Strauss') + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+  }
+
+  html = '<div class="alert alert-info mb-8" style="font-size:12px">' + transactionCount + ' WinTeam transactions &nbsp;&nbsp; ' + dists.length + ' line items &nbsp;&nbsp; ' + from + ' to ' + to + '</div>' + html;
+  container.innerHTML = html;
+  container._rawData = { from, to, byDateJob, dists };
 }
 
 function printWTReceived() {
