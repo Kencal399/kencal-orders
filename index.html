@@ -1285,8 +1285,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const pwGroup = document.getElementById('passwordGroup');
     if (PROTECTED_USERS.includes(val)) {
       pwGroup.style.display = 'block';
+      document.getElementById('loginPassword').focus();
     } else {
       pwGroup.style.display = 'none';
+      document.getElementById('loginPassword').value = '';
     }
     document.getElementById('loginError').style.display = 'none';
   });
@@ -1295,23 +1297,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.key === 'Enter') doLogin();
   });
 
-  // Load supervisor list from Supabase so new supervisors appear without re-uploading
+  // Load supervisor list from Supabase
   fetch(`${SUPABASE_URL}/rest/v1/kencal_supervisors?select=name&active=eq.true&order=name.asc&limit=200`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Accept: 'application/json' }
   }).then(r => r.json()).then(sups => {
     if (!sups || !sups.length) return;
     const sel = document.getElementById('loginUser');
-    const group = sel.querySelector('optgroup[label="Supervisors"]');
-    if (group) group.innerHTML = '';
-    const optgroup = group || document.createElement('optgroup');
-    optgroup.label = 'Supervisors';
+    // Remove existing supervisor options (but keep Rick, Mary, Santiago)
+    Array.from(sel.querySelectorAll('option')).forEach(opt => {
+      if (opt.value.startsWith('sup_')) opt.remove();
+    });
+    const divider = sel.querySelector('option[disabled]');
     sups.forEach(s => {
       const opt = document.createElement('option');
       opt.value = 'sup_' + s.name;
       opt.textContent = s.name;
-      optgroup.appendChild(opt);
+      sel.appendChild(opt);
     });
-    if (!group) sel.appendChild(optgroup);
   }).catch(() => {});
 });
 
