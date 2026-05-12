@@ -1393,13 +1393,15 @@ async function submitMissingLocationRequest() {
   const supervisor = document.getElementById('supName').value;
 
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests`, {
+    const locReqRes = await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests`, {
       method: 'POST',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ supervisor, location_name: name, address, job_number: job || null, notes: note, status: 'pending', created_at: new Date().toISOString() })
     });
+    if (!locReqRes.ok) throw new Error('Supabase error: ' + locReqRes.status);
   } catch(e) {
-    // If table doesn't exist yet, store in localStorage as fallback
+    // Supabase table not set up yet — store in localStorage as fallback
+    console.warn('Location request fallback to localStorage:', e.message);
     const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
     reqs.push({ supervisor, location_name: name, address, job_number: job || null, notes: note, status: 'pending', created_at: new Date().toISOString() });
     localStorage.setItem('kencal_loc_requests', JSON.stringify(reqs));
@@ -1438,7 +1440,7 @@ async function renderLocationRequests() {
     return;
   }
   container.innerHTML = reqs.map((r, i) => `
-    <div style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:10px 14px;margin-bottom:8px">
+    <div data-req-id="${r.id || 'local'}" style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:10px 14px;margin-bottom:8px">
       <div style="font-size:13px;font-weight:600">${r.location_name}</div>
       <div style="font-size:12px;color:#555;margin-top:3px">
         ${r.address ? '📍 ' + r.address + '<br>' : ''}
@@ -1450,11 +1452,28 @@ async function renderLocationRequests() {
     </div>`).join('');
 }
 
-function dismissLocationRequest(i) {
-  const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
-  const pending = reqs.filter(r => r.status === 'pending');
-  if (pending[i]) { pending[i].status = 'done'; }
-  localStorage.setItem('kencal_loc_requests', JSON.stringify(reqs.map((r,idx) => idx === i ? {...r, status:'done'} : r)));
+async function dismissLocationRequest(i) {
+  // Get current pending list to find the record
+  const container = document.getElementById('adminLocationRequests');
+  const allCards = container.querySelectorAll('[data-req-id]');
+  const reqId = allCards[i] ? allCards[i].dataset.reqId : null;
+
+  if (reqId && reqId !== 'local') {
+    // It's a Supabase record — update status there
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests?id=eq.${reqId}`, {
+        method: 'PATCH',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'done' })
+      });
+    } catch(e) { console.warn('Could not dismiss in Supabase:', e.message); }
+  } else {
+    // localStorage fallback
+    const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
+    const pending = reqs.filter(r => r.status === 'pending');
+    if (pending[i]) pending[i].status = 'done';
+    localStorage.setItem('kencal_loc_requests', JSON.stringify(reqs));
+  }
   renderLocationRequests();
 }
 async function loadInitialData() {
