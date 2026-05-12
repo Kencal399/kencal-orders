@@ -471,6 +471,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .sticky-bar .cart-info { color: var(--white); font-size: 14px; }
 .sticky-bar .cart-info span { color: var(--gold-light); font-weight: 700; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -1809,21 +1810,21 @@ async function submitOrder() {
 }
 
 async function notifyMary(supervisorName, locationName, jobNumber, itemCount) {
-  await fetch(`${SUPABASE_URL}/functions/v1/notify-mary`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      record: {
+  try {
+    await emailjs.send(
+      'service_nmi2z1d',
+      'template_noah66f',
+      {
         supervisor_name: supervisorName,
         location_name: locationName,
         job_number: jobNumber,
         item_count: itemCount
-      }
-    })
-  });
+      },
+      'RFnDJhwguzwkocqWF'
+    );
+  } catch(e) {
+    console.warn('Email notification failed:', e);
+  }
 }
 
 function resetSupForm() {
