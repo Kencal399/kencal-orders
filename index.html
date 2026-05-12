@@ -2751,15 +2751,28 @@ async function loadAdminProducts() {
     return;
   }
 
-  const rows = Object.entries(products).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).map(([id, info]) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-light);font-size:13px;gap:8px">
-      <div><strong>${id}</strong> — ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type})</span></div>
-      <div style="display:flex;gap:4px">
-        <button class="btn btn-outline btn-xs" onclick="editProduct('${job}','${id}','${info.desc.replace(/'/g,"\\'")}','${info.unit}','${info.type}')">Edit</button>
-        <button class="btn btn-danger btn-xs" onclick="removeProductFromLocation('${job}','${id}')">Remove</button>
-      </div>
-    </div>`).join('');
-  container.innerHTML = rows;
+  const container = document.getElementById('adminProductsList');
+  container.innerHTML = '';
+  Object.entries(products).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).forEach(([id, info]) => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-light);font-size:13px;gap:8px';
+    div.innerHTML = `<div><strong>${id}</strong> — ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
+    const btnDiv = div.querySelector('div:last-child');
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-outline btn-xs';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => editProduct(job, id, info.desc, info.unit, info.type));
+    btnDiv.appendChild(editBtn);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn btn-danger btn-xs';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', () => removeProductFromLocation(job, id));
+    btnDiv.appendChild(removeBtn);
+
+    container.appendChild(div);
+  });
 }
 
 async function addProductToLocation() {
