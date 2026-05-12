@@ -987,6 +987,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                 <th style="padding:8px;text-align:left">Description</th>
                 <th style="padding:8px;text-align:left">Unit</th>
                 <th style="padding:8px;text-align:left">Locations</th>
+                <th style="padding:8px;text-align:left">Edit</th>
               </tr>
             </thead>
             <tbody id="masterProdBody"></tbody>
@@ -2751,7 +2752,6 @@ async function loadAdminProducts() {
     return;
   }
 
-  const container = document.getElementById('adminProductsList');
   container.innerHTML = '';
   Object.entries(products).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).forEach(([id, info]) => {
     const div = document.createElement('div');
@@ -2845,13 +2845,53 @@ function showMasterProductList() {
 function renderMasterProducts(data) {
   const entries = Object.entries(data).sort((a,b) => a[1].desc.localeCompare(b[1].desc));
   document.getElementById('masterProdCount').textContent = `${entries.length} unique products across all locations`;
-  document.getElementById('masterProdBody').innerHTML = entries.map(([id, info]) => `
-    <tr style="border-bottom:1px solid #eee">
+  
+  const tbody = document.getElementById('masterProdBody');
+  tbody.innerHTML = '';
+  
+  entries.forEach(([id, info]) => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #eee';
+    tr.innerHTML = `
       <td style="padding:7px 8px;font-family:monospace;font-size:11px;color:#555">${id}</td>
       <td style="padding:7px 8px;font-weight:500">${info.desc}</td>
       <td style="padding:7px 8px;color:#888">${info.unit}</td>
       <td style="padding:7px 8px;font-size:11px;color:#666">${info.locations.join(', ')}</td>
-    </tr>`).join('');
+      <td style="padding:7px 8px"></td>`;
+    
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-outline btn-xs';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => editProductGlobal(id, info));
+    tr.querySelector('td:last-child').appendChild(editBtn);
+    tbody.appendChild(tr);
+  });
+}
+
+async function editProductGlobal(itemId, info) {
+  const newDesc = prompt('Edit description:', info.desc);
+  if (newDesc === null || !newDesc.trim()) return;
+  const newUnit = prompt('Edit unit:', info.unit);
+  if (newUnit === null || !newUnit.trim()) return;
+
+  showLoading('Updating across all locations...');
+  
+  // Update in all locations that carry this item
+  const jobs = Object.keys(locationProducts).filter(job => locationProducts[job][itemId]);
+  for (const job of jobs) {
+    const url = `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}&item_number=eq.${encodeURIComponent(itemId)}`;
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_description: newDesc.trim(), unit: newUnit.trim() })
+    });
+    locationProducts[job][itemId].desc = newDesc.trim();
+    locationProducts[job][itemId].unit = newUnit.trim();
+  }
+  
+  hideLoading();
+  alert(`Updated "${itemId}" across ${jobs.length} location(s).`);
+  showMasterProductList(); // refresh
 }
 
 function filterMasterProducts() {
