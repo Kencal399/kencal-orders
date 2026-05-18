@@ -531,6 +531,26 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
   <div class="tab-content" id="tab-supervisor">
     <div class="section-title">Submit Supply Order</div>
 
+    <div class="card" style="border-left:4px solid var(--gold);margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <div class="card-title" style="margin-bottom:0"> How to Submit an Order</div>
+        <span style="font-size:12px;color:var(--gray-dark)">tap to expand ▾</span>
+      </div>
+      <div class="hidden" style="margin-top:12px;font-size:13px;color:var(--gray-dark);line-height:1.7">
+        <b>Ordering from Imperial (standard):</b><br>
+        1. Select your name and the job location.<br>
+        2. Choose <b>Order from Imperial</b> — use this when supplies need to be ordered from Imperial/Strauss.<br>
+        3. Select items and quantities, then review and submit.<br>
+        4. Mary will review, approve, and place the order with Imperial.<br><br>
+        <b>Distributing from warehouse stock:</b><br>
+        1. Select your name and the job location.<br>
+        2. Choose <b>Distribute from Stock</b> — use this when the item is already in our warehouse and does not need to be ordered.<br>
+        3. Select items and quantities, then review and submit.<br>
+        4. Mary will confirm the distribution — no Imperial order will be placed.<br><br>
+        <b>Location not listed?</b> Select your name first, then choose <i>"My location isn't listed"</i> from the location dropdown to send a request to admin.
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title"> Order Details</div>
       <div class="form-row">
@@ -569,6 +589,25 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
 
     <div id="supOrderArea" class="hidden">
+      <div class="card">
+        <div class="card-title"> Order Type</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:2px solid var(--navy);border-radius:8px;flex:1;min-width:180px" id="orderTypeImperialLabel">
+            <input type="radio" name="orderType" value="imperial" checked onchange="onOrderTypeChange()" style="accent-color:var(--navy)">
+            <div>
+              <div style="font-weight:600;font-size:13px">Order from Imperial</div>
+              <div style="font-size:11px;color:var(--gray-dark)">Mary will place this order with Imperial/Strauss</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:2px solid var(--gray-light);border-radius:8px;flex:1;min-width:180px" id="orderTypeStockLabel">
+            <input type="radio" name="orderType" value="stock" onchange="onOrderTypeChange()" style="accent-color:var(--navy)">
+            <div>
+              <div style="font-weight:600;font-size:13px">Distribute from Stock</div>
+              <div style="font-size:11px;color:var(--gray-dark)">Item is already in our warehouse — no Imperial order needed</div>
+            </div>
+          </label>
+        </div>
+      </div>
       <div class="card">
         <div class="card-title"> Select Items</div>
         <div id="supCatalogForm"></div>
@@ -611,6 +650,25 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     <div class="section-title">
       Inventory Manager -- Order Review
       <span class="sub" id="maryPendingCount"></span>
+    </div>
+
+    <div class="card" style="border-left:4px solid var(--gold);margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <div class="card-title" style="margin-bottom:0"> How to Process Orders</div>
+        <span style="font-size:12px;color:var(--gray-dark)">tap to expand ▾</span>
+      </div>
+      <div class="hidden" style="margin-top:12px;font-size:13px;color:var(--gray-dark);line-height:1.7">
+        <b>Standard Imperial order <span class="badge badge-warehouse" style="vertical-align:middle">Warehouse</span> or <span class="badge badge-dropship" style="vertical-align:middle">Drop Ship</span>:</b><br>
+        1. Review the order — adjust quantities or remove items if needed.<br>
+        2. Click <b>Mark Reviewed</b>, then set a delivery date.<br>
+        3. Click <b>Approve for Imperial</b> to move it to the Imperial CSV tab.<br>
+        4. In the Imperial CSV tab, select orders and download the CSV to send to Imperial.<br><br>
+        <b>Warehouse stock distribution <span class="badge" style="background:#7c3aed;color:white;vertical-align:middle">From Stock</span>:</b><br>
+        1. Review the order — the item is already in our warehouse, no Imperial order needed.<br>
+        2. Click <b>Mark Reviewed</b>.<br>
+        3. Click <b>✓ Fulfill from Stock</b> — this closes the order and records it for WinTeam. Do <u>not</u> send to Imperial.<br><br>
+        <b>WinTeam entry:</b> Use the WinTeam Reports tab at the end of each month to generate your Usage/Resale reference sheet. Both Imperial and stock orders will appear there.
+      </div>
     </div>
 
     <div class="flex-gap mb-8">
@@ -1840,6 +1898,9 @@ async function submitOrder() {
     const isDS = DROPSHIP_JOBS.has(supCurrentJob);
     const itemCount = Object.keys(supQtys).length;
 
+    const orderTypeEl = document.querySelector('input[name="orderType"]:checked');
+    const orderType = orderTypeEl ? orderTypeEl.value : 'imperial';
+
     const orderData = {
       order_ref: orderRef,
       supervisor: supCurrentName,
@@ -1848,6 +1909,7 @@ async function submitOrder() {
       items: supQtys,
       status: 'pending',
       is_dropship: isDS,
+      order_type: orderType,
       item_count: itemCount,
       created_at: new Date().toISOString()
     };
@@ -1889,6 +1951,14 @@ async function notifyMary(supervisorName, locationName, jobNumber, itemCount) {
   }
 }
 
+function onOrderTypeChange() {
+  const val = document.querySelector('input[name="orderType"]:checked').value;
+  const imperialLabel = document.getElementById('orderTypeImperialLabel');
+  const stockLabel = document.getElementById('orderTypeStockLabel');
+  imperialLabel.style.borderColor = val === 'imperial' ? 'var(--navy)' : 'var(--gray-light)';
+  stockLabel.style.borderColor = val === 'stock' ? 'var(--navy)' : 'var(--gray-light)';
+}
+
 function resetSupForm() {
   supQtys = {};
   document.getElementById('supLocation').value = '';
@@ -1900,6 +1970,9 @@ function resetSupForm() {
   document.getElementById('supStickyBar').style.removeProperty('display');
   if (currentRole !== 'supervisor') document.getElementById('supName').value = '';
   else onSupNameChange();
+  // Reset order type to default
+  const imperialRadio = document.querySelector('input[name="orderType"][value="imperial"]');
+  if (imperialRadio) { imperialRadio.checked = true; onOrderTypeChange(); }
 }
 
 // ===========================================================
@@ -2101,7 +2174,8 @@ function renderOrderCard(order, view) {
   const itemCount = Object.keys(items).length;
   const dateStr = new Date(order.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const statusBadge = `<span class="badge badge-${order.status}">${order.status}</span>`;
-  const dsBadge = order.is_dropship ? `<span class="badge badge-dropship">Drop Ship</span>` : `<span class="badge badge-warehouse">Warehouse</span>`;
+  const isStock = order.order_type === 'stock';
+  const dsBadge = isStock ? `<span class="badge" style="background:#7c3aed;color:white">From Stock</span>` : order.is_dropship ? `<span class="badge badge-dropship">Drop Ship</span>` : `<span class="badge badge-warehouse">Warehouse</span>`;
   const isSent = order.status === 'sent';
   const cardStyle = isSent ? 'opacity:0.45;filter:grayscale(0.3)' : '';
 
@@ -2137,8 +2211,12 @@ function renderOrderCard(order, view) {
       }
       const reviewedBtn = order.status === 'pending' ?
         '<button class="btn btn-primary btn-sm" onclick="updateOrderStatus(' + order.id + ',\'reviewed\')">Mark Reviewed</button>' : '';
+      const isStockOrder = order.order_type === 'stock';
       const approveBtn = order.status === 'reviewed' ?
-        '<button class="btn btn-green btn-sm" onclick="updateOrderStatus(' + order.id + ',\'approved\')">Approve for Imperial</button>' : '';
+        (isStockOrder
+          ? '<button class="btn btn-sm" style="background:#7c3aed;color:white" onclick="fulfillFromStock(' + order.id + ')">✓ Fulfill from Stock</button>'
+          : '<button class="btn btn-green btn-sm" onclick="updateOrderStatus(' + order.id + ',\'approved\')">Approve for Imperial</button>')
+        : '';
       maryControls =
         '<div class="delivery-date-row">' +
         '<label>Delivery Date:</label>' +
@@ -2176,6 +2254,14 @@ function renderOrderCard(order, view) {
 function toggleOrderCard(id) {
   const body = document.getElementById('orderBody' + id);
   body.classList.toggle('open');
+}
+
+async function fulfillFromStock(id) {
+  if (!confirm('Mark this order as fulfilled from warehouse stock? It will be sent to WinTeam and no Imperial order will be placed.')) return;
+  showLoading('Updating...');
+  await sb.update('kencal_orders', {status: 'sent', updated_at: new Date().toISOString()}, {id});
+  await loadMaryOrders();
+  hideLoading();
 }
 
 async function updateOrderStatus(id, status) {
