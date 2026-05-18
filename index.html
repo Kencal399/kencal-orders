@@ -543,8 +543,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         3. Select items and quantities, then review and submit.<br>
         4. Mary will review, approve, and place the order with Imperial.<br><br>
         <b>Distributing from warehouse stock:</b><br>
-        1. Select your name and the job location.<br>
-        2. Choose <b>Distribute from Stock</b> — use this when the item is already in our warehouse and does not need to be ordered.<br>
+        1. Select your name, then choose <b>Distribute from Stock</b>.<br>
+        2. The location list will expand to show <b>all locations</b> — including other supervisors' accounts — so you can log a handoff to any job site.<br>
         3. Select items and quantities, then review and submit.<br>
         4. Mary will confirm the distribution — no Imperial order will be placed.<br><br>
         <b>Location not listed?</b> Select your name first, then choose <i>"My location isn't listed"</i> from the location dropdown to send a request to admin.
@@ -1957,6 +1957,54 @@ function onOrderTypeChange() {
   const stockLabel = document.getElementById('orderTypeStockLabel');
   imperialLabel.style.borderColor = val === 'imperial' ? 'var(--navy)' : 'var(--gray-light)';
   stockLabel.style.borderColor = val === 'stock' ? 'var(--navy)' : 'var(--gray-light)';
+
+  // When distributing from stock, show ALL locations (not just this supervisor's)
+  const name = document.getElementById('supName').value;
+  if (!name) return;
+  const locSel = document.getElementById('supLocation');
+  const previousJob = locSel.value;
+
+  locSel.innerHTML = '<option value="">-- Select location --</option>';
+
+  let locs;
+  if (val === 'stock') {
+    // All locations across all supervisors
+    const allJobs = new Set();
+    Object.values(SUPERVISOR_LOCATIONS).forEach(jobs => jobs.forEach(j => allJobs.add(j)));
+    locs = [...allJobs]
+      .map(j => ({ job: j, name: LOCATION_NAMES[j] || j }))
+      .filter(l => l.name)
+      .sort((a,b) => a.name.localeCompare(b.name));
+  } else {
+    // Only this supervisor's locations
+    const jobs = SUPERVISOR_LOCATIONS[name] || [];
+    locs = jobs.map(j => ({ job: j, name: LOCATION_NAMES[j] || j }))
+               .filter(l => l.name)
+               .sort((a,b) => a.name.localeCompare(b.name));
+  }
+
+  locs.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.job;
+    opt.textContent = l.name + ' (' + l.job + ')';
+    locSel.appendChild(opt);
+  });
+
+  // Add missing location option
+  const missingOpt = document.createElement('option');
+  missingOpt.value = '__missing__';
+  missingOpt.textContent = "📍 My location isn't listed...";
+  locSel.appendChild(missingOpt);
+
+  // Restore previous selection if still valid
+  if (previousJob && locSel.querySelector('option[value="' + previousJob + '"]')) {
+    locSel.value = previousJob;
+  } else {
+    // Reset order area since location changed
+    document.getElementById('supOrderArea').classList.add('hidden');
+    document.getElementById('supJobInfo').classList.add('hidden');
+    supQtys = {};
+  }
 }
 
 function resetSupForm() {
