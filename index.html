@@ -687,6 +687,11 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <select id="marySupervisorFilter" onchange="filterMaryOrders()">
         <option value="">All Supervisors</option>
       </select>
+      <span style="font-size:12px;color:var(--gray-dark);margin-left:4px">Group by:</span>
+      <select id="maryGroupBy" onchange="filterMaryOrders()" style="padding:6px 10px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px">
+        <option value="date">Date</option>
+        <option value="supervisor">Supervisor / Location</option>
+      </select>
       <button class="btn btn-outline btn-sm" onclick="switchTab('history')"> View History</button>
       <button class="btn btn-danger btn-sm" onclick="archiveSentOrders()"> Archive Sent</button>
     </div>
@@ -2247,8 +2252,39 @@ function renderMaryOrders(orders) {
     container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No orders found.</p></div>';
     return;
   }
-  // Render cards first, then async-inject flags
-  container.innerHTML = orders.map(order => renderOrderCard(order, 'mary')).join('');
+
+  const groupBy = document.getElementById('maryGroupBy') ? document.getElementById('maryGroupBy').value : 'date';
+
+  if (groupBy === 'supervisor') {
+    // Group by supervisor, then by location within each supervisor
+    const grouped = {};
+    orders.forEach(function(o) {
+      const sup = o.supervisor || 'Unknown';
+      const loc = o.location_name || o.job_number || 'Unknown';
+      if (!grouped[sup]) grouped[sup] = {};
+      if (!grouped[sup][loc]) grouped[sup][loc] = [];
+      grouped[sup][loc].push(o);
+    });
+
+    let html = '';
+    Object.keys(grouped).sort().forEach(function(sup) {
+      html += '<div style="margin-bottom:24px">';
+      html += '<div style="background:var(--navy);color:white;padding:10px 16px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px">' + sup + '</div>';
+      const locations = grouped[sup];
+      Object.keys(locations).sort().forEach(function(loc) {
+        html += '<div style="border-left:3px solid var(--gold);margin-left:8px;padding-left:0;margin-bottom:4px">';
+        html += '<div style="background:var(--light-bg,#f4f6fa);padding:7px 14px;font-size:12px;font-weight:600;color:var(--navy);border-bottom:1px solid var(--gray-light)">' + loc + '</div>';
+        html += locations[loc].map(function(order) { return renderOrderCard(order, 'mary'); }).join('');
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  } else {
+    // Default: date order
+    container.innerHTML = orders.map(order => renderOrderCard(order, 'mary')).join('');
+  }
+
   // Run flag analysis in background for each pending/reviewed order
   orders.forEach(order => {
     if (order.status === 'pending' || order.status === 'reviewed') {
