@@ -1381,8 +1381,9 @@ document.addEventListener('DOMContentLoaded', function() {
     Array.from(sel.querySelectorAll('option')).forEach(opt => {
       if (opt.value.startsWith('sup_')) opt.remove();
     });
-    const divider = sel.querySelector('option[disabled]');
-    sups.forEach(s => {
+    // Exclude protected users from supervisor list to prevent password bypass
+    const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
+    sups.filter(s => !protectedNames.includes(s.name)).forEach(s => {
       const opt = document.createElement('option');
       opt.value = 'sup_' + s.name;
       opt.textContent = s.name;
