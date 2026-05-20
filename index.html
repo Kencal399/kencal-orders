@@ -1250,6 +1250,9 @@ let supCurrentJob = null;
 let supCurrentName = null;
 let locationProducts = {};  // loaded from Supabase or fallback
 let maryOrders = [];
+let maryPollInterval = null;
+let maryLastOrderCount = 0;
+let maryLastOrderIds = new Set();
 let selectedOrdersForExport = new Set();
 
 // ===========================================================
@@ -1333,9 +1336,14 @@ function doLogin() {
 
   buildTabs();
   loadInitialData();
+  if (currentRole === "mary" || currentRole === "admin") {
+    requestNotificationPermission();
+    startMaryPolling();
+  }
 }
 
 function doLogout() {
+  stopMaryPolling();
   currentUser = null; currentRole = null;
   supQtys = {}; supCurrentJob = null;
   document.getElementById('mainApp').style.display = 'none';
@@ -1933,6 +1941,64 @@ async function submitOrder() {
   hideLoading();
 }
 
+// ===========================================================
+// REALTIME POLLING
+// ===========================================================
+function startMaryPolling() {
+  if (maryPollInterval) return;
+  maryPollInterval = setInterval(async function() {
+    if (currentRole !== "mary" && currentRole !== "admin") return;
+    try {
+      const orders = await sb.query("kencal_orders", {order: "created_at.desc"});
+      if (!orders || orders.error) return;
+      const newOrders = orders.filter(function(o) { return o.status === "pending" && !maryLastOrderIds.has(o.id); });
+      if (newOrders.length > 0) {
+        document.title = "(" + newOrders.length + " New Order" + (newOrders.length > 1 ? "s" : "") + ") Kencal Supply";
+        setTimeout(function() { document.title = "Kencal Supply"; }, 8000);
+        showOrderToast(newOrders);
+        if (Notification && Notification.permission === "granted") {
+          newOrders.forEach(function(o) {
+            new Notification("New Supply Order", {
+              body: (o.supervisor || "A supervisor") + " submitted an order for " + (o.location_name || o.job_number)
+            });
+          });
+        }
+      }
+      maryLastOrderIds = new Set(orders.map(function(o) { return o.id; }));
+      maryOrders = orders;
+      renderMaryOrders(maryOrders);
+      updatePendingCount();
+    } catch(e) {
+      console.warn("Polling error:", e.message);
+    }
+  }, 30000);
+}
+
+function stopMaryPolling() {
+  if (maryPollInterval) { clearInterval(maryPollInterval); maryPollInterval = null; }
+}
+
+function showOrderToast(newOrders) {
+  var existing = document.getElementById("maryOrderToast");
+  if (existing) existing.remove();
+  var names = newOrders.map(function(o) { return o.supervisor || "Unknown"; }).join(", ");
+  var toast = document.createElement("div");
+  toast.id = "maryOrderToast";
+  toast.setAttribute("style", "position:fixed;top:20px;right:20px;z-index:9999;background:#1a2744;color:white;padding:14px 20px;border-radius:10px;border-left:4px solid #c8972a;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:13px;max-width:320px;cursor:pointer");
+  toast.innerHTML = "<div style=\"font-weight:700;margin-bottom:4px\"> New Order Received!</div>" +
+    "<div style=\"opacity:0.85\">From: " + names + "</div>" +
+    "<div style=\"opacity:0.6;font-size:11px;margin-top:4px\">Click to dismiss</div>";
+  toast.onclick = function() { toast.remove(); };
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 15000);
+}
+
+async function requestNotificationPermission() {
+  if (Notification && Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+}
+
 async function notifyMary(supervisorName, locationName, jobNumber, itemCount) {
   try {
     await emailjs.send(
@@ -2032,6 +2098,7 @@ async function loadMaryOrders() {
     const orders = await sb.query('kencal_orders', {order: 'created_at.desc'});
     if (orders && orders.error) { throw new Error(orders.error.message); }
     maryOrders = orders || [];
+    maryLastOrderIds = new Set(maryOrders.map(function(o) { return o.id; }));
     renderMaryOrders(maryOrders);
     updatePendingCount();
     populateSupervisorFilter();
@@ -4221,7 +4288,12 @@ function printWTUsage() {
     'tr:last-child td{border-bottom:none;} ' +
     '.footer{margin-top:16px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px;} ' +
     '@media print{.transaction{page-break-inside:avoid;} .trans-header,.trans-title{-webkit-print-color-adjust:exact;print-color-adjust:exact;} th{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}' +
-    '</style></head><body>' +
+    '@keyframes slideIn {
+  from { opacity:0; transform:translateX(40px); }
+  to   { opacity:1; transform:translateX(0); }
+}
+#maryOrderToast { animation: slideIn 0.3s ease; }
+</style></head><body>' +
     '<h1>WinTeam -- Usage / Resale Entry Reference</h1>' +
     '<div class="meta">Period: <strong>' + from + ' to ' + to + '</strong> &nbsp;&nbsp; Generated: ' + printDate + ' &nbsp;&nbsp; ' + transactionCount + ' ' + groupLabel + ' to enter</div>' +
     bodyHtml +
