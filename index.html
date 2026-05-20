@@ -1696,12 +1696,15 @@ async function seedSupervisors() {
 function rebuildLoginDropdown() {
   const sel = document.getElementById('loginUser');
   const currentVal = sel.value;
+  const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
   // Remove existing supervisor options
   const group = sel.querySelector('optgroup[label="Supervisors"]');
   if (group) group.innerHTML = '';
   const optgroup = group || document.createElement('optgroup');
   optgroup.label = 'Supervisors';
   Object.keys(SUPERVISOR_LOCATIONS).sort().forEach(name => {
+    // Never add protected users as supervisor options
+    if (protectedNames.includes(name)) return;
     const opt = document.createElement('option');
     opt.value = 'sup_' + name;
     opt.textContent = name;
