@@ -1184,7 +1184,7 @@ const SUPERVISOR_LOCATIONS = {
 // Warehouse bulk orders always use: standard=1754002, rebill=1754200
 // 399 Knollwood building itself: standard=1754016, rebill=1754160
 const IMPERIAL_JOB_MAP = {
-  // ── CONFIRMED MAPPINGS ──────────────────────────────────────
+  // -- CONFIRMED MAPPINGS --------------------------------------
   "10050":  {"standard":"1754004","rebill":"1754400"},  // 480 North Broadway, Yonkers
   "10850":  {"standard":"1754015","rebill":"1754150"},  // Securitas-Diebold, 3 Westchester Plaza
   "11170":  {"standard":"1754026","rebill":"1754260"},  // Greenburgh Eleven UFSD
@@ -1225,7 +1225,7 @@ const IMPERIAL_JOB_MAP = {
   "51725":  {"standard":"1754853","rebill":"1754854"},  // 1 Station Plaza, Stamford
   "11240":  {"standard":"1754223","rebill":"1754622"},  // 500 White Plains Road, Tarrytown
 
-  // ── NOT YET MAPPED — will use bulk warehouse account ────────
+  // -- NOT YET MAPPED - will use bulk warehouse account --------
   // 10075, 10175, 11150, 11220, 20400, 20600, 21200, 23400,
   // 23720, 30125, 30650, 30720, 30730, 30800, 40100, 40101,
   // 40500, 40600, 45625, 50550, 50775, 51050, 51300, 51530,
@@ -1455,7 +1455,7 @@ function switchTab(tabId) {
 }
 
 // ===========================================================
-// LOAD INITIAL DATA — everything from Supabase
+// LOAD INITIAL DATA - everything from Supabase
 // ===========================================================
 async function submitMissingLocationRequest() {
   const name = document.getElementById('missingLocName').value.trim();
@@ -1473,7 +1473,7 @@ async function submitMissingLocationRequest() {
     });
     if (!locReqRes.ok) throw new Error('Supabase error: ' + locReqRes.status);
   } catch(e) {
-    // Supabase table not set up yet — store in localStorage as fallback
+    // Supabase table not set up yet - store in localStorage as fallback
     console.warn('Location request fallback to localStorage:', e.message);
     const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
     reqs.push({ supervisor, location_name: name, address, job_number: job || null, notes: note, status: 'pending', created_at: new Date().toISOString() });
@@ -1516,12 +1516,12 @@ async function renderLocationRequests() {
     <div data-req-id="${r.id || 'local'}" style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:10px 14px;margin-bottom:8px">
       <div style="font-size:13px;font-weight:600">${r.location_name}</div>
       <div style="font-size:12px;color:#555;margin-top:3px">
-        ${r.address ? '📍 ' + r.address + '<br>' : ''}
+        ${r.address ? '? ' + r.address + '<br>' : ''}
         ${r.job_number ? 'Job #: ' + r.job_number + '<br>' : ''}
         ${r.notes ? 'Notes: ' + r.notes + '<br>' : ''}
         Requested by: <b>${r.supervisor}</b> &nbsp;|&nbsp; ${new Date(r.created_at).toLocaleDateString()}
       </div>
-      <button class="btn btn-outline btn-xs" style="margin-top:6px" onclick="dismissLocationRequest(${i})">✓ Dismiss (after adding to system)</button>
+      <button class="btn btn-outline btn-xs" style="margin-top:6px" onclick="dismissLocationRequest(${i})">? Dismiss (after adding to system)</button>
     </div>`).join('');
 }
 
@@ -1532,7 +1532,7 @@ async function dismissLocationRequest(i) {
   const reqId = allCards[i] ? allCards[i].dataset.reqId : null;
 
   if (reqId && reqId !== 'local') {
-    // It's a Supabase record — update status there
+    // It's a Supabase record - update status there
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests?id=eq.${reqId}`, {
         method: 'PATCH',
@@ -1763,7 +1763,7 @@ function onSupNameChange() {
   // Always add "My location isn't listed" at the bottom
   const missingOpt = document.createElement('option');
   missingOpt.value = '__missing__';
-  missingOpt.textContent = '📍 My location isn\'t listed...';
+  missingOpt.textContent = '? My location isn\'t listed...';
   locSel.appendChild(missingOpt);
 
   if (currentRole === 'supervisor') {
@@ -2069,7 +2069,7 @@ function onOrderTypeChange() {
   // Add missing location option
   const missingOpt = document.createElement('option');
   missingOpt.value = '__missing__';
-  missingOpt.textContent = "📍 My location isn't listed...";
+  missingOpt.textContent = "? My location isn't listed...";
   locSel.appendChild(missingOpt);
 
   // Restore previous selection if still valid
@@ -2221,19 +2221,19 @@ async function analyzeOrderFlags(order) {
   });
 
   if (!hasAnyHistory && Object.keys(currentItems).length > 0) {
-    flags.push({ type: 'yellow', msg: '⚠️ No order history found for this location — treating all items as new.' });
+    flags.push({ type: 'yellow', msg: '?? No order history found for this location - treating all items as new.' });
     Object.keys(currentItems).forEach(id => { itemFlags[id] = 'new'; });
     return { flags, itemFlags };
   }
 
   if (redCount > 0) {
-    flags.push({ type: 'red', msg: `🚩 ${redCount} item${redCount>1?'s':''} ordered significantly higher than usual. Review quantities highlighted in red below.` });
+    flags.push({ type: 'red', msg: `? ${redCount} item${redCount>1?'s':''} ordered significantly higher than usual. Review quantities highlighted in red below.` });
   }
   if (yellowCount > 0) {
-    flags.push({ type: 'yellow', msg: `⚠️ ${yellowCount} item${yellowCount>1?'s':''} have no order history for this location — verify before sending to Imperial.` });
+    flags.push({ type: 'yellow', msg: `?? ${yellowCount} item${yellowCount>1?'s':''} have no order history for this location - verify before sending to Imperial.` });
   }
   if (redCount === 0 && yellowCount === 0) {
-    flags.push({ type: 'green', msg: `✅ All quantities look normal based on 2025–2026 order history.` });
+    flags.push({ type: 'green', msg: `? All quantities look normal based on 2025-2026 order history.` });
   }
 
   return { flags, itemFlags };
@@ -2284,10 +2284,10 @@ function injectOrderFlags(orderId, flags, itemFlags) {
         // Add inline label
         const qtyCell = row.querySelectorAll('td')[2];
         if (qtyCell && flagType === 'high') {
-          qtyCell.innerHTML += ' <span style="color:#e53e3e;font-size:11px;font-weight:700">▲ HIGH</span>';
+          qtyCell.innerHTML += ' <span style="color:#e53e3e;font-size:11px;font-weight:700">? HIGH</span>';
         }
         if (qtyCell && flagType === 'new') {
-          qtyCell.innerHTML += ' <span style="color:#d97706;font-size:11px;font-weight:700">★ NEW</span>';
+          qtyCell.innerHTML += ' <span style="color:#d97706;font-size:11px;font-weight:700">? NEW</span>';
         }
       }
     });
@@ -2339,7 +2339,7 @@ function renderOrderCard(order, view) {
       const isStockOrder = order.order_type === 'stock';
       const approveBtn = order.status === 'reviewed' ?
         (isStockOrder
-          ? '<button class="btn btn-sm" style="background:#7c3aed;color:white" onclick="fulfillFromStock(' + order.id + ')">✓ Fulfill from Stock</button>'
+          ? '<button class="btn btn-sm" style="background:#7c3aed;color:white" onclick="fulfillFromStock(' + order.id + ')">? Fulfill from Stock</button>'
           : '<button class="btn btn-green btn-sm" onclick="updateOrderStatus(' + order.id + ',\'approved\')">Approve for Imperial</button>')
         : '';
       maryControls =
@@ -2716,7 +2716,7 @@ function buildImperialSummary() {
       if (unmapped) tr.style.background = '#fff8e1';
       tr.id = `impRow_${overrideKey}`;
       tr.innerHTML = `
-        <td id="impAcct_${overrideKey}">${acct}${unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ NOT MAPPED</span>' : ''}</td>
+        <td id="impAcct_${overrideKey}">${acct}${unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">?? NOT MAPPED</span>' : ''}</td>
         <td>${order.location_name}</td>
         <td>${id}</td>
         <td>${item.name}</td>
@@ -2869,7 +2869,7 @@ function filterAdminLocations() {
   resultBox.innerHTML = results.map(r =>
     `<div style="padding:3px 0;border-bottom:1px solid #cce0f5">
       <b>${r.locName}</b> <span style="color:#888;font-size:11px">(Job #${r.job})</span><br>
-      <span style="color:#1F4E79;font-size:12px">👤 ${r.supervisors.length ? r.supervisors.join(', ') : '<i style="color:#999">No supervisor assigned</i>'}</span>
+      <span style="color:#1F4E79;font-size:12px">? ${r.supervisors.length ? r.supervisors.join(', ') : '<i style="color:#999">No supervisor assigned</i>'}</span>
     </div>`
   ).join('');
   resultBox.style.display = 'block';
@@ -3005,7 +3005,7 @@ async function loadAdminProducts() {
   Object.entries(products).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).forEach(([id, info]) => {
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-light);font-size:13px;gap:8px';
-    div.innerHTML = `<div><strong>${id}</strong> — ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
+    div.innerHTML = `<div><strong>${id}</strong> - ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
     const btnDiv = div.querySelector('div:last-child');
 
     const editBtn = document.createElement('button');
@@ -4003,7 +4003,7 @@ async function loadWTUsage() {
           byLocation[key] = { job: group.job, jobName: group.jobName, supervisor: group.supervisor, destType: group.destType, items: [], dates: new Set() };
         }
         group.items.forEach(function(item) {
-          // Merge duplicate item numbers — add quantities
+          // Merge duplicate item numbers - add quantities
           const existing = byLocation[key].items.find(i => i.item_number === item.item_number);
           if (existing) {
             existing.quantity = parseFloat(existing.quantity) + parseFloat(item.quantity);
@@ -4018,7 +4018,7 @@ async function loadWTUsage() {
         transactionCount++;
         const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
         const dateRange = [...group.dates].sort().join(', ');
-        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items at this location are sourced from Brady Industries - place a separate Brady order.</td></tr>' : '';
 
         html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
           '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
@@ -4055,7 +4055,7 @@ async function loadWTUsage() {
       Object.values(byDateJob).forEach(function(group) {
         transactionCount++;
         const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items at this location are sourced from Brady Industries - place a separate Brady order.</td></tr>' : '';
 
         html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
           '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
@@ -4124,7 +4124,7 @@ function reRenderWTUsage() {
       transactionCount++;
       const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
       const dateRange = [...group.dates].sort().join(', ');
-      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items sourced from Brady Industries - place a separate order.</td></tr>' : '';
       html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
@@ -4143,7 +4143,7 @@ function reRenderWTUsage() {
     Object.values(byDateJob).forEach(function(group) {
       transactionCount++;
       const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items sourced from Brady Industries - place a separate order.</td></tr>' : '';
       html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
@@ -4239,7 +4239,7 @@ function printWTUsage() {
     transactionCount++;
     const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
     const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ?
-      '<div style="background:#fff3e0;border-left:3px solid #e65100;padding:5px 10px;font-size:10px;color:#e65100;margin-bottom:4px"><b>⚠️ Brady Industries:</b> Some items at this location are sourced from Brady Industries — place a separate Brady order in addition to Imperial.</div>' : '';
+      '<div style="background:#fff3e0;border-left:3px solid #e65100;padding:5px 10px;font-size:10px;color:#e65100;margin-bottom:4px"><b>?? Brady Industries:</b> Some items at this location are sourced from Brady Industries - place a separate Brady order in addition to Imperial.</div>' : '';
 
     // Date/meta line depends on grouping mode
     var metaText;
@@ -4298,12 +4298,8 @@ function printWTUsage() {
     'tr:last-child td{border-bottom:none;} ' +
     '.footer{margin-top:16px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px;} ' +
     '@media print{.transaction{page-break-inside:avoid;} .trans-header,.trans-title{-webkit-print-color-adjust:exact;print-color-adjust:exact;} th{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}' +
-    '@keyframes slideIn {
-  from { opacity:0; transform:translateX(40px); }
-  to   { opacity:1; transform:translateX(0); }
-}
-#maryOrderToast { animation: slideIn 0.3s ease; }
-</style></head><body>' +
+    '@keyframes slideIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } } #maryOrderToast { animation: slideIn 0.3s ease; }' +
+    '</style></head><body>' +
     '<h1>WinTeam -- Usage / Resale Entry Reference</h1>' +
     '<div class="meta">Period: <strong>' + from + ' to ' + to + '</strong> &nbsp;&nbsp; Generated: ' + printDate + ' &nbsp;&nbsp; ' + transactionCount + ' ' + groupLabel + ' to enter</div>' +
     bodyHtml +
