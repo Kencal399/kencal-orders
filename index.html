@@ -498,7 +498,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <optgroup label="Supervisors">
           <option value="sup_Gustavo">Gustavo</option>
           <option value="sup_Damian">Damian</option>
-          <option value="sup_Santiago">Santiago Alzate</option>
           <option value="sup_Hector 1.0">Hector 1.0</option>
           <option value="sup_Hector 2.0">Hector 2.0</option>
           <option value="sup_Pablo">Pablo</option>
@@ -1319,7 +1318,12 @@ function doLogin() {
   if (!userVal) { alert('Please select your name.'); return; }
 
   const pw = document.getElementById('loginPassword').value;
-  if (PROTECTED_USERS.includes(userVal) && pw !== ADMIN_PASSWORD) {
+  // Block by value OR by name (catches any sup_ entries for protected people)
+  const selectedText = document.getElementById('loginUser').selectedOptions[0].textContent.trim();
+  const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
+  const needsPassword = PROTECTED_USERS.includes(userVal) || protectedNames.some(n => selectedText.includes(n));
+  if (needsPassword && pw !== ADMIN_PASSWORD) {
+    document.getElementById('passwordGroup').style.display = 'block';
     document.getElementById('loginError').style.display = 'block';
     return;
   }
@@ -1356,8 +1360,10 @@ function doLogout() {
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('loginUser').addEventListener('change', function() {
     const val = this.value;
+    const selectedText = this.selectedOptions[0].textContent.trim();
+    const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
     const pwGroup = document.getElementById('passwordGroup');
-    if (PROTECTED_USERS.includes(val)) {
+    if (PROTECTED_USERS.includes(val) || protectedNames.some(n => selectedText.includes(n))) {
       pwGroup.style.display = 'block';
       document.getElementById('loginPassword').focus();
     } else {
