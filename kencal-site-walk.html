@@ -200,18 +200,18 @@ textarea { min-height: 80px; resize: vertical; }
     </div>
     <div class="g2">
       <div><label class="field-label">Industry vertical</label>
-        <select id="vert">
+        <select id="vert" onchange="updateIndustrySection()">
           <option value="">Select...</option>
-          <option>Commercial office</option>
-          <option>Property management (multi-tenant)</option>
-          <option>Education – K–12</option>
-          <option>Education – higher ed</option>
-          <option>Healthcare / medical</option>
-          <option>Post-construction</option>
-          <option>Automobile / dealer</option>
-          <option>Retail</option>
-          <option>Religious / church</option>
-          <option>Other</option>
+          <option value="commercial_office">Commercial office</option>
+          <option value="property_management">Property management (multi-tenant)</option>
+          <option value="education_k12">Education – K–12</option>
+          <option value="education_higher">Education – higher ed</option>
+          <option value="healthcare">Healthcare / medical</option>
+          <option value="post_construction">Post-construction</option>
+          <option value="auto_dealer">Automobile / dealer</option>
+          <option value="retail">Retail</option>
+          <option value="religious">Religious / church</option>
+          <option value="other">Other</option>
         </select>
       </div>
       <div><label class="field-label">Incumbent / competitor</label><input type="text" id="inc" placeholder="ABM, ISS, unknown..."></div>
@@ -314,6 +314,12 @@ textarea { min-height: 80px; resize: vertical; }
         <label class="pill"><input type="checkbox" value="multitenant" onchange="togC(this);recalc()">Multi-tenant billing</label>
       </div>
     </div>
+  </div>
+
+  <!-- Industry-specific -->
+  <div class="section" id="industrySection" style="display:none;">
+    <div class="section-title" id="industryTitle">Industry details</div>
+    <div id="industryFields"></div>
   </div>
 
   <!-- Photos -->
@@ -456,6 +462,17 @@ function renderView(w) {
   if (w.notes) {
     html += '<div class="view-section"><div class="view-section-title">Notes</div><p style="font-size:14px;line-height:1.7;color:var(--text);">' + w.notes + '</p></div>';
   }
+  if (w.vertical_details && Object.keys(w.vertical_details).length) {
+    var vert = w.vertical;
+    var cfg = vert && INDUSTRY_CONFIGS[vert] ? INDUSTRY_CONFIGS[vert] : null;
+    var rows = Object.entries(w.vertical_details).map(function(e) {
+      var label = e[0];
+      if (cfg) { var f = cfg.fields.find(function(ff){return ff.id===e[0];}); if(f) label=f.label; }
+      var val = Array.isArray(e[1]) ? e[1].join(', ') : e[1];
+      return [label, val];
+    }).filter(function(r){return r[1]!==0&&r[1]!==''&&r[1]!==null;});
+    if (rows.length) html += viewSection((cfg ? cfg.title : 'Industry details'), rows);
+  }
   if (w.photo_urls && w.photo_urls.length) {
     html += '<div class="view-section"><div class="view-section-title">Site photos (' + w.photo_urls.length + ')</div><div class="view-photos">';
     w.photo_urls.forEach(function(url) { html += '<div class="view-photo"><img src="' + url + '" alt="Site photo"></div>'; });
@@ -571,7 +588,171 @@ function recalc() {
   flags.forEach(f => { var s = document.createElement('span'); s.className='flag '+f.c; s.textContent=f.t; fl.appendChild(s); });
 }
 
-// ── Photos ───────────────────────────────────────────
+// ── Industry-specific sections ───────────────────────
+var INDUSTRY_CONFIGS = {
+  healthcare: {
+    title: 'Healthcare / medical details',
+    fields: [
+      {id:'exam_rooms', label:'Exam / treatment rooms', type:'number'},
+      {id:'procedure_rooms', label:'Procedure / OR rooms', type:'number'},
+      {id:'waiting_areas', label:'Waiting areas', type:'number'},
+      {id:'sinks_per_room', label:'Avg sinks per exam room', type:'number'},
+      {id:'biohazard_stations', label:'Biohazard disposal stations', type:'number'},
+      {id:'sterilization_areas', label:'Sterilization / autoclave areas', type:'number'},
+      {id:'nurses_stations', label:'Nurse stations', type:'number'},
+      {id:'patient_rooms', label:'Patient / overnight rooms', type:'number'},
+      {id:'hc_compliance', label:'Compliance requirements', type:'pills', options:['HIPAA', 'OSHA bloodborne', 'Joint Commission', 'CDC infection control', 'State DOH']},
+      {id:'hc_notes', label:'Additional healthcare notes', type:'text'}
+    ]
+  },
+  education_k12: {
+    title: 'K–12 education details',
+    fields: [
+      {id:'classrooms', label:'Classrooms', type:'number'},
+      {id:'gyms', label:'Gymnasiums', type:'number'},
+      {id:'locker_rooms_ed', label:'Locker rooms', type:'number'},
+      {id:'cafeteria_ed', label:'Cafeteria / lunch rooms', type:'number'},
+      {id:'labs', label:'Science / computer labs', type:'number'},
+      {id:'auditorium', label:'Auditorium / theater', type:'number'},
+      {id:'outdoor_courts', label:'Outdoor courts / playgrounds', type:'pills', options:['Basketball courts','Playground','Track','Athletic fields','None']},
+      {id:'summer_scope', label:'Summer deep-clean scope', type:'pills', options:['Full building','Classrooms only','Gym / locker rooms','Cafeteria','Floors stripped & waxed']},
+      {id:'ed_notes', label:'Additional school notes', type:'text'}
+    ]
+  },
+  education_higher: {
+    title: 'Higher education details',
+    fields: [
+      {id:'lecture_halls', label:'Lecture halls / classrooms', type:'number'},
+      {id:'labs_higher', label:'Labs (science, computer, etc.)', type:'number'},
+      {id:'dorms', label:'Dormitory buildings', type:'number'},
+      {id:'dining_halls', label:'Dining halls', type:'number'},
+      {id:'common_areas_higher', label:'Student common areas / lounges', type:'number'},
+      {id:'athletic_facilities', label:'Athletic / recreation facilities', type:'number'},
+      {id:'occupied_24hr', label:'24-hr occupied areas', type:'pills', options:['Dorms','Library','Student union','Security office','None']},
+      {id:'higher_notes', label:'Additional notes', type:'text'}
+    ]
+  },
+  property_management: {
+    title: 'Multi-tenant property details',
+    fields: [
+      {id:'num_tenants', label:'Number of tenants', type:'number'},
+      {id:'occupancy_pct', label:'Current occupancy (%)', type:'number'},
+      {id:'separate_billing', label:'Separate tenant billing needed', type:'pills', options:['Yes – all tenants','Yes – some tenants','No – single invoice']},
+      {id:'common_area_type', label:'Common areas included', type:'pills', options:['Lobby','Elevators','Stairwells','Parking garage','Rooftop','Fitness center','Conference center']},
+      {id:'tenant_addons', label:'Tenants with separate add-on scope', type:'text', placeholder:'e.g. Floor 3 law firm – after-hours cleaning'},
+      {id:'pm_notes', label:'Additional property notes', type:'text'}
+    ]
+  },
+  commercial_office: {
+    title: 'Commercial office details',
+    fields: [
+      {id:'conf_rooms', label:'Conference / meeting rooms', type:'number'},
+      {id:'private_offices', label:'Private offices', type:'number'},
+      {id:'open_plan_areas', label:'Open plan / bullpen areas', type:'number'},
+      {id:'server_rooms', label:'Server / IT rooms', type:'number'},
+      {id:'after_hours', label:'After-hours access needed', type:'pills', options:['Yes','No','Occasionally']},
+      {id:'office_notes', label:'Additional notes', type:'text'}
+    ]
+  },
+  post_construction: {
+    title: 'Post-construction details',
+    fields: [
+      {id:'construction_type', label:'Construction type', type:'pills', options:['New build','Commercial fit-out','Renovation','Tenant improvement','Addition']},
+      {id:'clean_phase', label:'Clean phase', type:'pills', options:['Rough clean','Final clean','Punch list clean','All phases']},
+      {id:'debris_removal', label:'Debris removal included', type:'pills', options:['Yes','No','Partial']},
+      {id:'paint_overspray', label:'Paint overspray / plaster dust present', type:'pills', options:['Heavy','Moderate','Light','None']},
+      {id:'window_film', label:'Window film removal needed', type:'pills', options:['Yes','No']},
+      {id:'gc_name', label:'General contractor name', type:'text', placeholder:'GC company name'},
+      {id:'payment_terms', label:'Payment terms confirmed', type:'pills', options:['Upfront deposit required','Net 30','Net 60','TBD']},
+      {id:'pc_notes', label:'Additional notes', type:'text'}
+    ]
+  },
+  auto_dealer: {
+    title: 'Automobile / dealer details',
+    fields: [
+      {id:'showroom_sqft', label:'Showroom sq ft', type:'number'},
+      {id:'service_bays', label:'Service bays', type:'number'},
+      {id:'detail_area', label:'Detail / wash area', type:'number'},
+      {id:'customer_lounge', label:'Customer lounge / waiting', type:'number'},
+      {id:'oil_chemical', label:'Oil / chemical floor areas', type:'pills', options:['Heavy','Moderate','Light','None']},
+      {id:'auto_notes', label:'Additional notes', type:'text'}
+    ]
+  },
+  retail: {
+    title: 'Retail details',
+    fields: [
+      {id:'sales_floor', label:'Sales floor sq ft', type:'number'},
+      {id:'stockroom', label:'Stockroom / warehouse sq ft', type:'number'},
+      {id:'fitting_rooms', label:'Fitting rooms', type:'number'},
+      {id:'food_court', label:'Food court / café area', type:'pills', options:['Yes','No']},
+      {id:'mall_common', label:'Mall common area included', type:'pills', options:['Yes','No']},
+      {id:'retail_hours', label:'Store operating hours', type:'text', placeholder:'e.g. 9am–9pm Mon–Sat'},
+      {id:'retail_notes', label:'Additional notes', type:'text'}
+    ]
+  },
+  religious: {
+    title: 'Religious / church details',
+    fields: [
+      {id:'sanctuary_sqft', label:'Sanctuary / main hall sq ft', type:'number'},
+      {id:'classrooms_rel', label:'Classrooms / Sunday school rooms', type:'number'},
+      {id:'fellowship_hall', label:'Fellowship hall / event space', type:'number'},
+      {id:'service_days', label:'Service / event days', type:'pills', options:['Sunday only','Wed + Sun','Daily','Events only']},
+      {id:'rel_notes', label:'Additional notes', type:'text'}
+    ]
+  }
+};
+
+function updateIndustrySection() {
+  var vert = document.getElementById('vert').value;
+  var sec = document.getElementById('industrySection');
+  var fieldsEl = document.getElementById('industryFields');
+  var titleEl = document.getElementById('industryTitle');
+  if (!vert || vert === 'other' || !INDUSTRY_CONFIGS[vert]) {
+    sec.style.display = 'none'; fieldsEl.innerHTML = ''; return;
+  }
+  var cfg = INDUSTRY_CONFIGS[vert];
+  titleEl.textContent = cfg.title;
+  fieldsEl.innerHTML = cfg.fields.map(function(f) {
+    if (f.type === 'number') {
+      return `<div class="g2" style="margin-bottom:12px;"><div><label class="field-label">${f.label}</label><input type="number" id="ind_${f.id}" placeholder="0"></div></div>`;
+    } else if (f.type === 'text') {
+      return `<div class="g1" style="margin-bottom:12px;"><label class="field-label">${f.label}</label><input type="text" id="ind_${f.id}" placeholder="${f.placeholder||''}"></div>`;
+    } else if (f.type === 'pills') {
+      var pills = f.options.map(function(o) {
+        return `<label class="pill"><input type="checkbox" value="${o}" onchange="togC(this)">${o}</label>`;
+      }).join('');
+      return `<div class="g1" style="margin-bottom:12px;"><label class="field-label">${f.label}</label><div class="pill-group">${pills}</div></div>`;
+    }
+    return '';
+  }).join('');
+  sec.style.display = 'block';
+}
+
+function getVerticalDetails() {
+  var vert = document.getElementById('vert').value;
+  if (!vert || vert === 'other' || !INDUSTRY_CONFIGS[vert]) return {};
+  var cfg = INDUSTRY_CONFIGS[vert]; var details = {};
+  cfg.fields.forEach(function(f) {
+    var el = document.getElementById('ind_' + f.id);
+    if (f.type === 'pills') {
+      var checked = Array.from(document.querySelectorAll(`#ind_${f.id}`) || []);
+      var vals = Array.from(document.querySelectorAll(`.pill input[value]`)).filter(function(i) {
+        return i.closest('.g1') && i.closest('.g1').querySelector('#ind_' + f.id) === null &&
+          document.getElementById('industryFields').contains(i) && i.checked;
+      });
+      var group = document.getElementById('industryFields').querySelectorAll('.pill-group');
+      var idx = cfg.fields.filter(ff => ff.type==='pills').indexOf(f);
+      if (group[idx]) {
+        details[f.id] = Array.from(group[idx].querySelectorAll('input:checked')).map(i => i.value);
+      }
+    } else if (el) {
+      details[f.id] = f.type === 'number' ? (parseInt(el.value)||0) : el.value;
+    }
+  });
+  return details;
+}
+
+
 function handlePhotos(input) {
   Array.from(input.files).forEach(file => {
     var reader = new FileReader();
@@ -662,6 +843,7 @@ async function submitForm() {
     complexity_score: scoreEl === '—' ? null : parseInt(scoreEl),
     price_tier: tierEl === '—' ? null : tierEl,
     photo_urls: photoUrls,
+    vertical_details: getVerticalDetails(),
     status: 'submitted'
   };
 
@@ -703,6 +885,8 @@ function resetForm() {
   document.getElementById('flagsEl').innerHTML = '';
   document.getElementById('submitBtn').disabled = false;
   document.getElementById('submitBtn').textContent = 'Submit Site Walk';
+  document.getElementById('industrySection').style.display = 'none';
+  document.getElementById('industryFields').innerHTML = '';
   photos = []; zoneCount = 0;
   addZone();
 }
