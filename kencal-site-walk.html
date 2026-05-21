@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kencal — Site Walk Intake</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f3f0;
+  --surface: #ffffff;
+  --border: #e0ded8;
+  --border-strong: #c8c5bc;
+  --text: #1a1916;
+  --text-muted: #6b6960;
+  --text-hint: #9b9890;
+  --accent: #1a3a2a;
+  --accent-light: #e8f0eb;
+  --accent-mid: #2d5c42;
+  --danger: #c0392b;
+  --danger-light: #fdf0ee;
+  --warning: #92660a;
+  --warning-light: #fdf6e3;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* Header */
+.header { background: var(--accent); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+.header-logo { color: #fff; font-size: 15px; font-weight: 600; letter-spacing: 0.04em; }
+.header-sub { color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 2px; }
+
+/* Landing screen */
+#landing { max-width: 480px; margin: 60px auto; padding: 0 20px; }
+.landing-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow); }
+.landing-title { font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.landing-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 28px; }
+.action-btn { display: block; width: 100%; padding: 14px 18px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-bottom: 12px; text-align: left; transition: background 0.15s; }
+.action-btn:hover { background: var(--accent-mid); }
+.or-divider { text-align: center; font-size: 12px; color: var(--text-hint); margin: 20px 0; position: relative; }
+.or-divider::before, .or-divider::after { content: ''; position: absolute; top: 50%; width: 42%; height: 1px; background: var(--border); }
+.or-divider::before { left: 0; } .or-divider::after { right: 0; }
+.walks-list { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.walk-item { padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; display: flex; justify-content: space-between; align-items: center; }
+.walk-item:last-child { border-bottom: none; }
+.walk-item:hover { background: var(--accent-light); }
+.walk-item-name { font-size: 14px; font-weight: 500; color: var(--text); }
+.walk-item-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.walk-item-badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--accent-light); color: var(--accent); font-weight: 500; white-space: nowrap; }
+.loading-msg { text-align: center; padding: 24px; font-size: 14px; color: var(--text-muted); }
+
+/* Form wrapper */
+#formView { display: none; max-width: 680px; margin: 0 auto; padding: 24px 20px 60px; }
+#viewMode { display: none; max-width: 680px; margin: 0 auto; padding: 24px 20px 60px; }
+
+.back-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); cursor: pointer; margin-bottom: 20px; background: none; border: none; font-family: 'DM Sans', sans-serif; padding: 0; }
+.back-btn:hover { color: var(--text); }
+
+.form-header { margin-bottom: 24px; }
+.form-title { font-size: 22px; font-weight: 600; color: var(--text); }
+.form-subtitle { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+
+/* Sections */
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.g1 { margin-bottom: 12px; }
+@media (max-width: 480px) { .g2 { grid-template-columns: 1fr; } }
+label.field-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
+input[type=text], input[type=number], input[type=date], select, textarea {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text); background: var(--surface);
+  transition: border-color 0.15s; outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { min-height: 80px; resize: vertical; }
+
+/* Pills */
+.pill-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; padding: 7px 11px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text-muted); transition: all 0.15s; user-select: none; }
+.pill input { display: none; }
+.pill:hover { border-color: var(--accent); color: var(--accent); }
+.pill.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 500; }
+
+/* Zone cards */
+.zone-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; background: var(--bg); }
+.zone-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.zone-name-input { font-size: 14px; font-weight: 500; border: none; background: transparent; color: var(--text); width: calc(100% - 60px); font-family: 'DM Sans', sans-serif; outline: none; padding: 0; }
+.zone-name-input::placeholder { color: var(--text-hint); font-weight: 400; }
+.del-btn { font-size: 12px; color: var(--danger); cursor: pointer; border: 1px solid #f0c8c4; border-radius: var(--radius-sm); padding: 4px 8px; background: var(--danger-light); font-family: 'DM Sans', sans-serif; }
+.add-zone-btn { width: 100%; padding: 10px; font-size: 13px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+.add-zone-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+/* Totals */
+.totals-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.total-box { background: var(--bg); border-radius: var(--radius-sm); padding: 12px 14px; }
+.total-box .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.total-box .val { font-size: 18px; font-weight: 600; color: var(--text); }
+.sqft-by-type { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.6; }
+
+/* Score */
+.score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.score-box { background: var(--bg); border-radius: var(--radius-sm); padding: 12px 14px; }
+.score-box .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.score-box .val { font-size: 20px; font-weight: 600; }
+.val.good { color: #2d7a3a; } .val.warn { color: var(--warning); } .val.bad { color: var(--danger); }
+.flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.flag { font-size: 12px; padding: 4px 10px; border-radius: 20px; font-weight: 500; }
+.flag.w { background: var(--warning-light); color: var(--warning); border: 1px solid #e8d08a; }
+.flag.d { background: var(--danger-light); color: var(--danger); border: 1px solid #f0c8c4; }
+
+/* Photo upload */
+.photo-drop { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 24px; text-align: center; cursor: pointer; background: var(--bg); transition: all 0.15s; }
+.photo-drop:hover { border-color: var(--accent); background: var(--accent-light); }
+.photo-drop-icon { font-size: 28px; margin-bottom: 8px; }
+.photo-drop p { font-size: 13px; color: var(--text-muted); }
+.photo-drop p.hint { font-size: 11px; color: var(--text-hint); margin-top: 4px; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+@media (max-width: 400px) { .photo-grid { grid-template-columns: repeat(2, 1fr); } }
+.photo-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-rm { position: absolute; top: 4px; right: 4px; background: rgba(255,255,255,0.9); border: 1px solid var(--border); border-radius: 4px; width: 22px; height: 22px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--danger); font-weight: 600; }
+.photo-caption { font-size: 10px; color: var(--text-hint); text-align: center; margin-top: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* Submit */
+.submit-btn { width: 100%; padding: 15px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 16px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 8px; transition: background 0.15s; }
+.submit-btn:hover { background: var(--accent-mid); }
+.submit-btn:disabled { background: var(--border-strong); cursor: not-allowed; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; color: #fff; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.toast.success { background: #2d7a3a; }
+.toast.error { background: var(--danger); }
+
+/* View mode */
+.view-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.view-section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.view-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.view-row:last-child { border-bottom: none; }
+.view-key { color: var(--text-muted); flex: 0 0 45%; }
+.view-val { color: var(--text); font-weight: 500; text-align: right; flex: 0 0 52%; }
+.print-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--text); margin-bottom: 16px; }
+.print-btn:hover { background: var(--bg); }
+.view-photos { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 8px; }
+.view-photo { aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.view-photo img { width: 100%; height: 100%; object-fit: cover; }
+.zone-view-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px; background: var(--bg); }
+.zone-view-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.zone-view-detail { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+@media print {
+  .header, .back-btn, .print-btn { display: none !important; }
+  body { background: #fff; }
+  .view-section { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-logo">KENCAL MAINTENANCE</div>
+    <div class="header-sub">Site Walk Intake</div>
+  </div>
+</div>
+
+<!-- Landing -->
+<div id="landing">
+  <div class="landing-card">
+    <div class="landing-title">Site Walk Tool</div>
+    <div class="landing-sub">Start a new intake form or review a previous walk-through.</div>
+    <button class="action-btn" onclick="showForm()">+ New site walk</button>
+    <div class="or-divider">or review previous</div>
+    <div id="walksList"><div class="loading-msg">Loading previous walk-throughs...</div></div>
+  </div>
+</div>
+
+<!-- Form View -->
+<div id="formView">
+  <button class="back-btn" onclick="showLanding()">← Back</button>
+  <div class="form-header">
+    <div class="form-title">Site Walk Intake</div>
+    <div class="form-subtitle">Fill out during or after the site walk. Submit when complete.</div>
+  </div>
+
+  <!-- Site Info -->
+  <div class="section">
+    <div class="section-title">Site information</div>
+    <div class="g2">
+      <div><label class="field-label">Customer / prospect</label><input type="text" id="cust" placeholder="ABC Property Management"></div>
+      <div><label class="field-label">Building address</label><input type="text" id="addr" placeholder="123 Main St, White Plains NY"></div>
+    </div>
+    <div class="g2">
+      <div><label class="field-label">Site walk date</label><input type="date" id="wdate"></div>
+      <div><label class="field-label">Rep / salesperson</label><input type="text" id="rep" placeholder="Name"></div>
+    </div>
+    <div class="g2">
+      <div><label class="field-label">Industry vertical</label>
+        <select id="vert">
+          <option value="">Select...</option>
+          <option>Commercial office</option>
+          <option>Property management (multi-tenant)</option>
+          <option>Education – K–12</option>
+          <option>Education – higher ed</option>
+          <option>Healthcare / medical</option>
+          <option>Post-construction</option>
+          <option>Automobile / dealer</option>
+          <option>Retail</option>
+          <option>Religious / church</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div><label class="field-label">Incumbent / competitor</label><input type="text" id="inc" placeholder="ABM, ISS, unknown..."></div>
+    </div>
+  </div>
+
+  <!-- Zones -->
+  <div class="section">
+    <div class="section-title">Floor zones — add one card per floor or zone</div>
+    <div id="zones"></div>
+    <button class="add-zone-btn" onclick="addZone()">+ Add floor / zone</button>
+    <div class="totals-row">
+      <div class="total-box"><div class="lbl">Total sq ft</div><div class="val" id="totalSqft">0</div></div>
+      <div class="total-box"><div class="lbl">By floor type</div><div class="sqft-by-type" id="sqftByType">—</div></div>
+    </div>
+  </div>
+
+  <!-- Bathrooms & Kitchens -->
+  <div class="section">
+    <div class="section-title">Bathrooms &amp; kitchens</div>
+    <div class="g2">
+      <div><label class="field-label">Full bathrooms</label><input type="number" id="fbath" placeholder="0" oninput="recalc()"></div>
+      <div><label class="field-label">Half baths / single-use</label><input type="number" id="hbath" placeholder="0" oninput="recalc()"></div>
+    </div>
+    <div class="g2">
+      <div><label class="field-label">Locker rooms / showers</label><input type="number" id="lock" placeholder="0" oninput="recalc()"></div>
+      <div><label class="field-label">Full kitchens</label><input type="number" id="fkit" placeholder="0" oninput="recalc()"></div>
+    </div>
+    <div class="g2">
+      <div><label class="field-label">Break rooms / kitchenettes</label><input type="number" id="kit" placeholder="0" oninput="recalc()"></div>
+      <div><label class="field-label">Cafeteria / dining</label><input type="number" id="caf" placeholder="0" oninput="recalc()"></div>
+    </div>
+  </div>
+
+  <!-- Services -->
+  <div class="section">
+    <div class="section-title">Service scope</div>
+    <div class="g1"><label class="field-label">Services required</label>
+      <div class="pill-group" id="svc">
+        <label class="pill"><input type="checkbox" value="janitorial" onchange="togC(this)">Janitorial / nightly</label>
+        <label class="pill"><input type="checkbox" value="carpet" onchange="togC(this)">Carpet cleaning</label>
+        <label class="pill"><input type="checkbox" value="windows" onchange="togC(this)">Window washing</label>
+        <label class="pill"><input type="checkbox" value="landscaping" onchange="togC(this)">Landscaping</label>
+        <label class="pill"><input type="checkbox" value="snow" onchange="togC(this)">Snow removal</label>
+        <label class="pill"><input type="checkbox" value="painting" onchange="togC(this)">Painting (Kencal Painting)</label>
+        <label class="pill"><input type="checkbox" value="handyman" onchange="togC(this)">Handyman / repairs</label>
+        <label class="pill"><input type="checkbox" value="postconstruction" onchange="togC(this)">Post-construction clean</label>
+        <label class="pill"><input type="checkbox" value="terminal" onchange="togC(this)">Terminal / medical</label>
+        <label class="pill"><input type="checkbox" value="porter" onchange="togC(this)">Day porter</label>
+      </div>
+    </div>
+    <div class="g2" style="margin-top:14px;">
+      <div><label class="field-label">Cleaning schedule</label>
+        <select id="sched" onchange="recalc()">
+          <option value="">Select...</option>
+          <option value="day">Day cleaning</option>
+          <option value="night">Night cleaning</option>
+          <option value="both">Day + night</option>
+          <option value="weekend">Weekend only</option>
+        </select>
+      </div>
+      <div><label class="field-label">Frequency</label>
+        <select id="freq">
+          <option value="">Select...</option>
+          <option value="daily7">Daily (7 days)</option>
+          <option value="daily5">Daily (5 days)</option>
+          <option value="3x">3× per week</option>
+          <option value="2x">2× per week</option>
+          <option value="1x">1× per week</option>
+          <option value="onetime">One-time</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Complexity -->
+  <div class="section">
+    <div class="section-title">Complexity factors</div>
+    <div class="g1"><label class="field-label">Building access / security</label>
+      <div class="pill-group" id="sec_grp">
+        <label class="pill"><input type="radio" name="sec" value="0" onchange="togR(this,'sec_grp');recalc()">Open access</label>
+        <label class="pill"><input type="radio" name="sec" value="1" onchange="togR(this,'sec_grp');recalc()">Key / fob required</label>
+        <label class="pill"><input type="radio" name="sec" value="2" onchange="togR(this,'sec_grp');recalc()">Escorted / high security</label>
+      </div>
+    </div>
+    <div class="g1" style="margin-top:12px;"><label class="field-label">Travel / toll factors</label>
+      <div class="pill-group" id="trav_grp">
+        <label class="pill"><input type="radio" name="trav" value="0" onchange="togR(this,'trav_grp');recalc()">Local (no tolls)</label>
+        <label class="pill"><input type="radio" name="trav" value="1" onchange="togR(this,'trav_grp');recalc()">Minor tolls / bridges</label>
+        <label class="pill"><input type="radio" name="trav" value="2" onchange="togR(this,'trav_grp');recalc()">Significant tolls / distance</label>
+      </div>
+    </div>
+    <div class="g1" style="margin-top:12px;"><label class="field-label">Special conditions</label>
+      <div class="pill-group" id="spcl_grp">
+        <label class="pill"><input type="checkbox" value="medical" onchange="togC(this);recalc()">Medical / biohazard</label>
+        <label class="pill"><input type="checkbox" value="union" onchange="togC(this);recalc()">Union / prevailing wage</label>
+        <label class="pill"><input type="checkbox" value="24hr" onchange="togC(this);recalc()">24-hr occupied</label>
+        <label class="pill"><input type="checkbox" value="highrise" onchange="togC(this);recalc()">High-rise (10+ floors)</label>
+        <label class="pill"><input type="checkbox" value="outdoor" onchange="togC(this);recalc()">Significant outdoor areas</label>
+        <label class="pill"><input type="checkbox" value="multitenant" onchange="togC(this);recalc()">Multi-tenant billing</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photos -->
+  <div class="section">
+    <div class="section-title">Site photos</div>
+    <input type="file" id="photoInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotos(this)">
+    <div class="photo-drop" onclick="document.getElementById('photoInput').click()">
+      <div class="photo-drop-icon">📷</div>
+      <p>Tap to take a photo or choose from camera roll</p>
+      <p class="hint">Works on iPhone, Android, and desktop · Multiple photos supported</p>
+    </div>
+    <div class="photo-grid" id="photoGrid"></div>
+  </div>
+
+  <!-- Notes -->
+  <div class="section">
+    <div class="section-title">Notes &amp; pricing</div>
+    <div class="g1"><label class="field-label">Site walk observations</label>
+      <textarea id="notes" placeholder="Building condition, special requests, tenant details, access notes, anything relevant to the bid..."></textarea>
+    </div>
+    <div class="g2">
+      <div><label class="field-label">Estimated contract start</label><input type="date" id="start"></div>
+      <div><label class="field-label">Estimated annual value ($)</label><input type="number" id="estval" placeholder="0"></div>
+    </div>
+  </div>
+
+  <!-- Score -->
+  <div class="section">
+    <div class="section-title">Complexity score</div>
+    <div class="score-grid">
+      <div class="score-box"><div class="lbl">Score</div><div class="val" id="cscore">—</div></div>
+      <div class="score-box"><div class="lbl">Price tier</div><div class="val" id="ptier">—</div></div>
+      <div class="score-box"><div class="lbl">Night premium</div><div class="val" id="nprem">—</div></div>
+      <div class="score-box"><div class="lbl">Photos</div><div class="val" id="pcount">0</div></div>
+    </div>
+    <div class="flags" id="flagsEl"></div>
+  </div>
+
+  <button class="submit-btn" id="submitBtn" onclick="submitForm()">Submit Site Walk</button>
+</div>
+
+<!-- View Mode -->
+<div id="viewMode">
+  <button class="back-btn" onclick="showLanding()">← Back</button>
+  <button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+  <div id="viewContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://cnayujuvmzvfqnxfutpi.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M';
+const HEADERS = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
+
+var photos = [], zoneCount = 0;
+var floorTypesList = ['carpet','hardwood','tile','vct','concrete','marble','mixed'];
+
+// ── Nav ──────────────────────────────────────────────
+function showLanding() {
+  document.getElementById('landing').style.display = 'block';
+  document.getElementById('formView').style.display = 'none';
+  document.getElementById('viewMode').style.display = 'none';
+  loadWalks();
+}
+function showForm() {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('formView').style.display = 'block';
+  document.getElementById('viewMode').style.display = 'none';
+  resetForm();
+}
+function showView() {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('formView').style.display = 'none';
+  document.getElementById('viewMode').style.display = 'block';
+}
+
+// ── Load previous walks ──────────────────────────────
+async function loadWalks() {
+  const el = document.getElementById('walksList');
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/site_walks?select=id,customer,address,walk_date,price_tier,complexity_score&order=created_at.desc&limit=20', { headers: HEADERS });
+    const data = await res.json();
+    if (!data.length) { el.innerHTML = '<div class="loading-msg">No previous walk-throughs yet.</div>'; return; }
+    el.innerHTML = '<div class="walks-list">' + data.map(w => `
+      <div class="walk-item" onclick="loadWalk('${w.id}')">
+        <div>
+          <div class="walk-item-name">${w.customer || 'Unnamed'}</div>
+          <div class="walk-item-meta">${w.address || ''} · ${w.walk_date || ''}</div>
+        </div>
+        <div class="walk-item-badge">${w.price_tier || '—'}</div>
+      </div>`).join('') + '</div>';
+  } catch(e) { el.innerHTML = '<div class="loading-msg">Could not load previous walk-throughs.</div>'; }
+}
+
+async function loadWalk(id) {
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/site_walks?id=eq.' + id, { headers: HEADERS });
+    const data = await res.json();
+    if (!data.length) return;
+    renderView(data[0]);
+    showView();
+  } catch(e) { showToast('Could not load walk-through.', 'error'); }
+}
+
+function renderView(w) {
+  var html = '';
+  html += viewSection('Site information', [
+    ['Customer', w.customer], ['Address', w.address], ['Walk date', w.walk_date],
+    ['Rep', w.rep], ['Vertical', w.vertical], ['Incumbent', w.incumbent]
+  ]);
+  if (w.zones && w.zones.length) {
+    html += '<div class="view-section"><div class="view-section-title">Floor zones</div>';
+    w.zones.forEach(function(z) {
+      html += `<div class="zone-view-card"><div class="zone-view-name">${z.name||'Unnamed zone'}</div>
+        <div class="zone-view-detail">
+          ${z.sqft ? z.sqft.toLocaleString() + ' sq ft · ' : ''}
+          ${z.rooms ? z.rooms + ' rooms · ' : ''}
+          ${z.floorTypes && z.floorTypes.length ? 'Floor types: ' + z.floorTypes.join(', ') : ''}
+          ${z.notes ? '<br>' + z.notes : ''}
+        </div></div>`;
+    });
+    html += '</div>';
+  }
+  html += viewSection('Bathrooms &amp; kitchens', [
+    ['Full bathrooms', w.full_baths], ['Half baths', w.half_baths],
+    ['Locker rooms', w.lockers], ['Full kitchens', w.full_kitchens],
+    ['Kitchenettes', w.kitchenettes], ['Cafeteria', w.cafeterias]
+  ]);
+  html += viewSection('Service scope', [
+    ['Services', w.services ? w.services.join(', ') : '—'],
+    ['Schedule', w.schedule], ['Frequency', w.frequency],
+    ['Special conditions', w.special_conditions ? w.special_conditions.join(', ') : 'None']
+  ]);
+  html += viewSection('Pricing &amp; complexity', [
+    ['Complexity score', w.complexity_score], ['Price tier', w.price_tier],
+    ['Estimated annual value', w.estimated_value ? '$' + parseInt(w.estimated_value).toLocaleString() : '—'],
+    ['Contract start', w.contract_start]
+  ]);
+  if (w.notes) {
+    html += '<div class="view-section"><div class="view-section-title">Notes</div><p style="font-size:14px;line-height:1.7;color:var(--text);">' + w.notes + '</p></div>';
+  }
+  if (w.photo_urls && w.photo_urls.length) {
+    html += '<div class="view-section"><div class="view-section-title">Site photos (' + w.photo_urls.length + ')</div><div class="view-photos">';
+    w.photo_urls.forEach(function(url) { html += '<div class="view-photo"><img src="' + url + '" alt="Site photo"></div>'; });
+    html += '</div></div>';
+  }
+  document.getElementById('viewContent').innerHTML = html;
+}
+
+function viewSection(title, rows) {
+  var filtered = rows.filter(function(r) { return r[1] !== null && r[1] !== undefined && r[1] !== '' && r[1] !== 0; });
+  if (!filtered.length) return '';
+  return '<div class="view-section"><div class="view-section-title">' + title + '</div>' +
+    filtered.map(function(r) { return '<div class="view-row"><span class="view-key">' + r[0] + '</span><span class="view-val">' + r[1] + '</span></div>'; }).join('') +
+    '</div>';
+}
+
+// ── Zone management ──────────────────────────────────
+function addZone(data) {
+  zoneCount++;
+  var id = 'zone_' + zoneCount;
+  var d = data || {};
+  var div = document.createElement('div');
+  div.className = 'zone-card'; div.id = id;
+  div.innerHTML = `
+    <div class="zone-header">
+      <input type="text" class="zone-name-input" placeholder="e.g. Floor 1, Lobby, Suite 200" value="${d.name||''}" oninput="recalcZones()">
+      <button class="del-btn" onclick="document.getElementById('${id}').remove();recalcZones()">Remove</button>
+    </div>
+    <div class="g2">
+      <div><label class="field-label">Sq ft</label><input type="number" class="zsqft" placeholder="0" value="${d.sqft||''}" oninput="recalcZones()"></div>
+      <div><label class="field-label">Offices / rooms</label><input type="number" class="zrooms" placeholder="0" value="${d.rooms||''}"></div>
+    </div>
+    <div class="g1"><label class="field-label">Floor types in this zone</label>
+      <div class="pill-group zft">
+        ${floorTypesList.map(f => `<label class="pill${d.floorTypes&&d.floorTypes.includes(f)?' on':''}"><input type="checkbox" value="${f}" ${d.floorTypes&&d.floorTypes.includes(f)?'checked':''} onchange="togC(this);recalcZones()">${f.charAt(0).toUpperCase()+f.slice(1)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="g1" style="margin-bottom:0;"><label class="field-label">Zone notes</label>
+      <input type="text" class="znotes" placeholder="Condition, special requirements..." value="${d.notes||''}">
+    </div>`;
+  document.getElementById('zones').appendChild(div);
+  recalcZones();
+}
+
+function recalcZones() {
+  var total = 0, byType = {};
+  document.querySelectorAll('.zone-card').forEach(function(z) {
+    var sq = parseInt(z.querySelector('.zsqft').value) || 0; total += sq;
+    z.querySelectorAll('.zft input:checked').forEach(function(cb) { byType[cb.value] = (byType[cb.value]||0) + sq; });
+  });
+  document.getElementById('totalSqft').textContent = total.toLocaleString();
+  var keys = Object.keys(byType);
+  document.getElementById('sqftByType').innerHTML = keys.length ? keys.map(k => k.charAt(0).toUpperCase()+k.slice(1)+': <strong>'+byType[k].toLocaleString()+' sq ft</strong>').join('<br>') : '—';
+  recalc();
+}
+
+// ── Pills ────────────────────────────────────────────
+function togC(el) { el.closest('.pill').classList.toggle('on', el.checked); }
+function togR(el, gid) { document.querySelectorAll('#'+gid+' input').forEach(r => r.closest('.pill').classList.remove('on')); el.closest('.pill').classList.add('on'); }
+function getChecked(gid) { return Array.from(document.querySelectorAll('#'+gid+' input:checked')).map(i => i.value); }
+function getRadio(name) { var el = document.querySelector('[name="'+name+'"]:checked'); return el ? parseInt(el.value) : 0; }
+
+// ── Complexity score ─────────────────────────────────
+function recalc() {
+  var sqft = 0; document.querySelectorAll('.zsqft').forEach(i => sqft += parseInt(i.value)||0);
+  var floors = document.querySelectorAll('.zone-card').length || 1;
+  var fbath = parseInt(document.getElementById('fbath').value)||0;
+  var hbath = parseInt(document.getElementById('hbath').value)||0;
+  var lock  = parseInt(document.getElementById('lock').value)||0;
+  var fkit  = parseInt(document.getElementById('fkit').value)||0;
+  var kit   = parseInt(document.getElementById('kit').value)||0;
+  var caf   = parseInt(document.getElementById('caf').value)||0;
+  var spcl  = getChecked('spcl_grp');
+  var sec   = getRadio('sec');
+  var trav  = getRadio('trav');
+  var sched = document.getElementById('sched').value;
+  var allFT = []; document.querySelectorAll('.zft input:checked').forEach(cb => { if(!allFT.includes(cb.value)) allFT.push(cb.value); });
+
+  var score = 0;
+  if (sqft > 0) score += Math.min(20, Math.round(sqft/2000));
+  score += fbath*3 + hbath*1 + lock*4 + fkit*4 + kit*2 + caf*6;
+  score += Math.max(0, floors-1)*2;
+  if (allFT.includes('marble')) score += 8;
+  if (allFT.includes('hardwood')) score += 4;
+  if (allFT.includes('mixed')) score += 3;
+  score += spcl.length*3 + sec*3 + trav*2;
+
+  var tier = 'Standard', tc = 'good';
+  if (score >= 50) { tier = 'Complex'; tc = 'bad'; }
+  else if (score >= 25) { tier = 'Mid-tier'; tc = 'warn'; }
+
+  var np = '—', nc = '';
+  if (sched==='night') { np='+5–8%'; nc='warn'; }
+  else if (sched==='both') { np='+10–12%'; nc='warn'; }
+  else if (sched==='day') { np='None'; }
+
+  document.getElementById('cscore').textContent = sqft > 0 ? score : '—';
+  document.getElementById('cscore').className = 'val ' + tc;
+  document.getElementById('ptier').textContent = sqft > 0 ? tier : '—';
+  document.getElementById('ptier').className = 'val ' + tc;
+  document.getElementById('nprem').textContent = np;
+  document.getElementById('nprem').className = 'val ' + nc;
+
+  var fl = document.getElementById('flagsEl'); fl.innerHTML = '';
+  var flags = [];
+  if (spcl.includes('medical')) flags.push({t:'Terminal cleaning protocol required',c:'d'});
+  if (spcl.includes('union')) flags.push({t:'Union / prevailing wage — verify rates',c:'w'});
+  if (spcl.includes('multitenant')) flags.push({t:'Multi-tenant — separate billing needed',c:'w'});
+  if (allFT.includes('marble')) flags.push({t:'Marble present — subcontract polishing',c:'w'});
+  if (caf > 0) flags.push({t:'Cafeteria — high complexity zone',c:'w'});
+  if (trav === 2) flags.push({t:'High travel cost — include in pricing',c:'w'});
+  if (score >= 50) flags.push({t:'High complexity — do not price on sq ft alone',c:'d'});
+  flags.forEach(f => { var s = document.createElement('span'); s.className='flag '+f.c; s.textContent=f.t; fl.appendChild(s); });
+}
+
+// ── Photos ───────────────────────────────────────────
+function handlePhotos(input) {
+  Array.from(input.files).forEach(file => {
+    var reader = new FileReader();
+    reader.onload = e => { photos.push({src: e.target.result, name: file.name, file: file}); renderPhotos(); };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+function renderPhotos() {
+  var grid = document.getElementById('photoGrid'); grid.innerHTML = '';
+  photos.forEach((p, i) => {
+    var div = document.createElement('div');
+    div.innerHTML = `<div class="photo-thumb"><img src="${p.src}" alt="Site photo ${i+1}"><span class="photo-rm" onclick="removePhoto(${i})">×</span></div><div class="photo-caption">${p.name.length>16?p.name.slice(0,14)+'…':p.name}</div>`;
+    grid.appendChild(div);
+  });
+  document.getElementById('pcount').textContent = photos.length;
+}
+function removePhoto(i) { photos.splice(i,1); renderPhotos(); }
+
+async function uploadPhotos() {
+  var urls = [];
+  for (var i = 0; i < photos.length; i++) {
+    var p = photos[i];
+    var ext = p.file.name.split('.').pop();
+    var path = 'walks/' + Date.now() + '_' + i + '.' + ext;
+    var res = await fetch(SUPABASE_URL + '/storage/v1/object/site-walk-photos/' + path, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': p.file.type },
+      body: p.file
+    });
+    if (res.ok) urls.push(SUPABASE_URL + '/storage/v1/object/public/site-walk-photos/' + path);
+  }
+  return urls;
+}
+
+// ── Submit ───────────────────────────────────────────
+async function submitForm() {
+  var cust = document.getElementById('cust').value.trim();
+  if (!cust) { showToast('Please enter a customer name.', 'error'); return; }
+
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'Uploading photos...';
+
+  var photoUrls = [];
+  if (photos.length) { photoUrls = await uploadPhotos(); }
+
+  btn.textContent = 'Saving...';
+
+  var sqft = 0; document.querySelectorAll('.zsqft').forEach(i => sqft += parseInt(i.value)||0);
+  var allFT = {}; document.querySelectorAll('.zft input:checked').forEach(cb => { allFT[cb.value] = (allFT[cb.value]||0) + (parseInt(cb.closest('.zone-card').querySelector('.zsqft').value)||0); });
+
+  var zones = Array.from(document.querySelectorAll('.zone-card')).map(z => ({
+    name: z.querySelector('.zone-name-input').value,
+    sqft: parseInt(z.querySelector('.zsqft').value)||0,
+    rooms: parseInt(z.querySelector('.zrooms').value)||0,
+    floorTypes: Array.from(z.querySelectorAll('.zft input:checked')).map(c => c.value),
+    notes: z.querySelector('.znotes').value
+  }));
+
+  var scoreEl = document.getElementById('cscore').textContent;
+  var tierEl  = document.getElementById('ptier').textContent;
+
+  var payload = {
+    customer: cust,
+    address: document.getElementById('addr').value,
+    walk_date: document.getElementById('wdate').value || null,
+    rep: document.getElementById('rep').value,
+    vertical: document.getElementById('vert').value,
+    incumbent: document.getElementById('inc').value,
+    zones: zones,
+    total_sqft: sqft,
+    sqft_by_type: allFT,
+    full_baths: parseInt(document.getElementById('fbath').value)||0,
+    half_baths: parseInt(document.getElementById('hbath').value)||0,
+    lockers: parseInt(document.getElementById('lock').value)||0,
+    full_kitchens: parseInt(document.getElementById('fkit').value)||0,
+    kitchenettes: parseInt(document.getElementById('kit').value)||0,
+    cafeterias: parseInt(document.getElementById('caf').value)||0,
+    services: getChecked('svc'),
+    schedule: document.getElementById('sched').value,
+    frequency: document.getElementById('freq').value,
+    security: getRadio('sec'),
+    travel: getRadio('trav'),
+    special_conditions: getChecked('spcl_grp'),
+    notes: document.getElementById('notes').value,
+    contract_start: document.getElementById('start').value || null,
+    estimated_value: parseInt(document.getElementById('estval').value)||null,
+    complexity_score: scoreEl === '—' ? null : parseInt(scoreEl),
+    price_tier: tierEl === '—' ? null : tierEl,
+    photo_urls: photoUrls,
+    status: 'submitted'
+  };
+
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/site_walks', {
+      method: 'POST',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      showToast('Site walk submitted successfully!', 'success');
+      setTimeout(() => showLanding(), 1500);
+    } else {
+      var err = await res.json();
+      showToast('Error: ' + (err.message || 'Could not save.'), 'error');
+      btn.disabled = false; btn.textContent = 'Submit Site Walk';
+    }
+  } catch(e) {
+    showToast('Network error. Please try again.', 'error');
+    btn.disabled = false; btn.textContent = 'Submit Site Walk';
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────
+function resetForm() {
+  ['cust','addr','rep','inc','notes','estval'].forEach(id => document.getElementById(id).value = '');
+  ['wdate','start'].forEach(id => document.getElementById(id).value = '');
+  ['vert','sched','freq'].forEach(id => document.getElementById(id).selectedIndex = 0);
+  document.querySelectorAll('.pill.on').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.pill input').forEach(i => i.checked = false);
+  document.getElementById('zones').innerHTML = '';
+  document.getElementById('photoGrid').innerHTML = '';
+  document.getElementById('totalSqft').textContent = '0';
+  document.getElementById('sqftByType').textContent = '—';
+  document.getElementById('cscore').textContent = '—';
+  document.getElementById('ptier').textContent = '—';
+  document.getElementById('nprem').textContent = '—';
+  document.getElementById('pcount').textContent = '0';
+  document.getElementById('flagsEl').innerHTML = '';
+  document.getElementById('submitBtn').disabled = false;
+  document.getElementById('submitBtn').textContent = 'Submit Site Walk';
+  photos = []; zoneCount = 0;
+  addZone();
+}
+
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Init ─────────────────────────────────────────────
+loadWalks();
+</script>
+</body>
+</html>
