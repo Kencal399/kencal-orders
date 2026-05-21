@@ -192,7 +192,7 @@ textarea { min-height: 80px; resize: vertical; }
     <div class="section-title">Site information</div>
     <div class="g2">
       <div><label class="field-label">Customer / prospect</label><input type="text" id="cust" placeholder="ABC Property Management"></div>
-      <div><label class="field-label">Building address</label><input type="text" id="addr" placeholder="123 Main St, White Plains NY"></div>
+      <div><label class="field-label">Building address</label><input type="text" id="addr" placeholder="123 Main St, White Plains NY" oninput="recalc()"></div>
     </div>
     <div class="g2">
       <div><label class="field-label">Site walk date</label><input type="date" id="wdate"></div>
@@ -348,13 +348,19 @@ textarea { min-height: 80px; resize: vertical; }
 
   <!-- Score -->
   <div class="section">
-    <div class="section-title">Complexity score</div>
+    <div class="section-title">Complexity &amp; staffing assessment</div>
     <div class="score-grid">
-      <div class="score-box"><div class="lbl">Score</div><div class="val" id="cscore">—</div></div>
+      <div class="score-box"><div class="lbl">Complexity score</div><div class="val" id="cscore">—</div></div>
       <div class="score-box"><div class="lbl">Price tier</div><div class="val" id="ptier">—</div></div>
       <div class="score-box"><div class="lbl">Night premium</div><div class="val" id="nprem">—</div></div>
       <div class="score-box"><div class="lbl">Photos</div><div class="val" id="pcount">0</div></div>
     </div>
+    <div style="border-top:1px solid var(--border);margin:14px 0 12px;"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div class="score-box"><div class="lbl">Staffing risk</div><div class="val" id="staffRisk">—</div></div>
+      <div class="score-box"><div class="lbl">Geographic zone</div><div class="val" style="font-size:14px;" id="geoZone">—</div></div>
+    </div>
+    <div class="flags" id="staffFlags" style="margin-bottom:10px;"></div>
     <div class="flags" id="flagsEl"></div>
   </div>
 
@@ -456,6 +462,7 @@ function renderView(w) {
   ]);
   html += viewSection('Pricing &amp; complexity', [
     ['Complexity score', w.complexity_score], ['Price tier', w.price_tier],
+    ['Staffing risk', w.staffing_risk], ['Geographic zone', w.geo_zone],
     ['Estimated annual value', w.estimated_value ? '$' + parseInt(w.estimated_value).toLocaleString() : '—'],
     ['Contract start', w.contract_start]
   ]);
@@ -586,6 +593,62 @@ function recalc() {
   if (trav === 2) flags.push({t:'High travel cost — include in pricing',c:'w'});
   if (score >= 50) flags.push({t:'High complexity — do not price on sq ft alone',c:'d'});
   flags.forEach(f => { var s = document.createElement('span'); s.className='flag '+f.c; s.textContent=f.t; fl.appendChild(s); });
+
+  // ── Staffing risk ─────────────────────────────────
+  var addr = document.getElementById('addr').value.toUpperCase();
+  var vert = document.getElementById('vert').value;
+
+  // Geographic zone detection from address
+  var geoZone = 'Unknown', geoRisk = 0;
+  if (addr.match(/\bFL\b|FLORIDA|MIAMI|ORLANDO|TAMPA|FORT LAUDERDALE|BOCA/)) {
+    geoZone = 'Florida'; geoRisk = 3;
+  } else if (addr.match(/\bRI\b|RHODE ISLAND|PROVIDENCE/)) {
+    geoZone = 'Rhode Island'; geoRisk = 2;
+  } else if (addr.match(/\bMA\b|MASSACHUSETTS|BOSTON/)) {
+    geoZone = 'Massachusetts'; geoRisk = 2;
+  } else if (addr.match(/\bCT\b|CONNECTICUT|HARTFORD|STAMFORD|BRIDGEPORT/)) {
+    geoZone = 'Connecticut'; geoRisk = 1;
+  } else if (addr.match(/\bNJ\b|NEW JERSEY|NEWARK|JERSEY CITY|HOBOKEN|TRENTON/)) {
+    geoZone = 'New Jersey'; geoRisk = 1;
+  } else if (addr.match(/MANHATTAN|NEW YORK, NY|NEW YORK,NY| NY 100| NY 101| NY 102/)) {
+    geoZone = 'NYC / Manhattan'; geoRisk = 3;
+  } else if (addr.match(/BROOKLYN|QUEENS|BRONX|STATEN ISLAND/)) {
+    geoZone = 'NYC Outer Boroughs'; geoRisk = 2;
+  } else if (addr.match(/\bNY\b|NEW YORK|WESTCHESTER|WHITE PLAINS|YONKERS|MOUNT VERNON|HARRISON|RYE|SCARSDALE|TARRYTOWN|OSSINING|PEEKSKILL/)) {
+    geoZone = 'Westchester / NY'; geoRisk = 0;
+  } else if (addr) {
+    geoZone = 'Outside core area'; geoRisk = 2;
+  }
+
+  // Staffing risk factors
+  var sRisk = 0, sFlags = [];
+  sRisk += geoRisk;
+  if (spcl.includes('medical')) { sRisk += 3; sFlags.push('Trained medical cleaning staff required'); }
+  if (spcl.includes('union')) { sRisk += 2; sFlags.push('Must staff from union roster'); }
+  if (spcl.includes('24hr')) { sRisk += 2; sFlags.push('Split shifts needed — harder to fill'); }
+  if (spcl.includes('highrise')) { sRisk += 1; sFlags.push('High-rise — may need security clearance'); }
+  if (sec === 2) { sRisk += 2; sFlags.push('Escorted access limits staffing flexibility'); }
+  if (sched === 'night') { sRisk += 1; sFlags.push('Night schedule — smaller available labor pool'); }
+  if (sched === 'both') { sRisk += 2; sFlags.push('Day + night schedule — two crews required'); }
+  if (vert === 'healthcare') { sRisk += 2; sFlags.push('Healthcare vertical — terminal cleaning certification needed'); }
+  if (vert === 'post_construction') { sRisk += 1; sFlags.push('Post-construction — verify PPE and dust protocol training'); }
+  if (geoRisk >= 2 && sqft > 20000) { sRisk += 1; sFlags.push('Large job in thin-roster area — begin recruiting early'); }
+  if (geoZone === 'Florida') sFlags.push('Florida location — confirm local headcount before bidding');
+  if (geoZone === 'Rhode Island' || geoZone === 'Massachusetts') sFlags.push('New England location — verify current roster coverage');
+  if (geoZone === 'NYC / Manhattan') sFlags.push('Manhattan — transit-dependent workforce, higher turnover risk');
+
+  var srLabel = '—', srClass = '';
+  if (sqft > 0 || addr.length > 5) {
+    if (sRisk >= 6) { srLabel = 'High'; srClass = 'bad'; }
+    else if (sRisk >= 3) { srLabel = 'Medium'; srClass = 'warn'; }
+    else { srLabel = 'Low'; srClass = 'good'; }
+  }
+  document.getElementById('staffRisk').textContent = srLabel;
+  document.getElementById('staffRisk').className = 'val ' + srClass;
+  document.getElementById('geoZone').textContent = addr.length > 3 ? geoZone : '—';
+
+  var sf = document.getElementById('staffFlags'); sf.innerHTML = '';
+  sFlags.forEach(function(t) { var s = document.createElement('span'); s.className='flag w'; s.textContent=t; sf.appendChild(s); });
 }
 
 // ── Industry-specific sections ───────────────────────
@@ -842,6 +905,8 @@ async function submitForm() {
     estimated_value: parseInt(document.getElementById('estval').value)||null,
     complexity_score: scoreEl === '—' ? null : parseInt(scoreEl),
     price_tier: tierEl === '—' ? null : tierEl,
+    staffing_risk: document.getElementById('staffRisk').textContent === '—' ? null : document.getElementById('staffRisk').textContent,
+    geo_zone: document.getElementById('geoZone').textContent === '—' ? null : document.getElementById('geoZone').textContent,
     photo_urls: photoUrls,
     vertical_details: getVerticalDetails(),
     status: 'submitted'
@@ -885,6 +950,10 @@ function resetForm() {
   document.getElementById('flagsEl').innerHTML = '';
   document.getElementById('submitBtn').disabled = false;
   document.getElementById('submitBtn').textContent = 'Submit Site Walk';
+  document.getElementById('staffRisk').textContent = '—';
+  document.getElementById('staffRisk').className = 'val';
+  document.getElementById('geoZone').textContent = '—';
+  document.getElementById('staffFlags').innerHTML = '';
   document.getElementById('industrySection').style.display = 'none';
   document.getElementById('industryFields').innerHTML = '';
   photos = []; zoneCount = 0;
