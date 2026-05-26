@@ -346,6 +346,37 @@ textarea { min-height: 80px; resize: vertical; }
     </div>
   </div>
 
+  <!-- Profitability Estimate -->
+  <div class="section">
+    <div class="section-title">Profitability estimate</div>
+
+    <!-- Rate inputs -->
+    <div style="background:var(--bg);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:12px;">Rate inputs — edit as needed</div>
+      <div class="g2">
+        <div><label class="field-label">Hourly labor rate ($/hr)</label><input type="number" id="laborRate" value="18" step="0.50" oninput="calcProfit()"></div>
+        <div><label class="field-label">Labor burden rate (%)</label><input type="number" id="burdenRate" value="28" step="1" oninput="calcProfit()"></div>
+      </div>
+      <div class="g2">
+        <div><label class="field-label">Monthly supplies cost ($)</label><input type="number" id="suppliesCost" placeholder="Optional" oninput="calcProfit()"></div>
+        <div><label class="field-label">Monthly equipment / overhead ($)</label><input type="number" id="equipCost" placeholder="Optional" oninput="calcProfit()"></div>
+      </div>
+      <div class="g1" style="margin-bottom:0;">
+        <label class="field-label">Restroom products</label>
+        <div class="pill-group" id="restroomProd">
+          <label class="pill"><input type="radio" name="rsprod" value="excluded" checked onchange="togR(this,'restroomProd');calcProfit()">Not included</label>
+          <label class="pill"><input type="radio" name="rsprod" value="included" onchange="togR(this,'restroomProd');calcProfit()">Included in contract</label>
+          <label class="pill"><input type="radio" name="rsprod" value="billback" onchange="togR(this,'restroomProd');calcProfit()">Bill-back separately</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="profitResults">
+      <div style="font-size:13px;color:var(--text-hint);text-align:center;padding:16px 0;">Enter sq ft, floor types, schedule, and frequency above to generate estimate.</div>
+    </div>
+  </div>
+
   <!-- Score -->
   <div class="section">
     <div class="section-title">Complexity &amp; staffing assessment</div>
@@ -649,9 +680,137 @@ function recalc() {
 
   var sf = document.getElementById('staffFlags'); sf.innerHTML = '';
   sFlags.forEach(function(t) { var s = document.createElement('span'); s.className='flag w'; s.textContent=t; sf.appendChild(s); });
+  calcProfit();
 }
 
-// ── Industry-specific sections ───────────────────────
+// ── Profitability estimate ────────────────────────────
+// Industry-standard sq ft cleaned per hour by floor type (cleanable space)
+var PRODUCTIVITY = {
+  carpet:   3500,  // sq ft/hr — vacuuming + spot clean
+  hardwood: 2800,  // sq ft/hr — dust mop + damp mop
+  tile:     2500,  // sq ft/hr — mop + spot scrub
+  vct:      3000,  // sq ft/hr — dust mop + wet mop
+  concrete: 3500,  // sq ft/hr — sweep + mop
+  marble:   1800,  // sq ft/hr — slow: specialty care required
+  mixed:    2500   // sq ft/hr — blended estimate
+};
+var FREQ_MULTIPLIER = { daily7:365/12, daily5:260/12, '3x':13, '2x':8.67, '1x':4.33, onetime:1 };
+// Industry standard price per sq ft per month by vertical
+var SQFT_PRICE = {
+  commercial_office: 0.14, property_management: 0.13, education_k12: 0.11,
+  education_higher: 0.12, healthcare: 0.22, post_construction: 0.35,
+  auto_dealer: 0.12, retail: 0.13, religious: 0.09, other: 0.13
+};
+
+function calcProfit() {
+  var el = document.getElementById('profitResults');
+  var sqft = 0;
+  document.querySelectorAll('.zsqft').forEach(function(i){ sqft += parseInt(i.value)||0; });
+  var freq = document.getElementById('freq').value;
+  var sched = document.getElementById('sched').value;
+  var vert = document.getElementById('vert').value;
+  var laborRate = parseFloat(document.getElementById('laborRate').value) || 18;
+  var burdenPct = parseFloat(document.getElementById('burdenRate').value) || 28;
+  var suppliesMo = parseFloat(document.getElementById('suppliesCost').value) || 0;
+  var equipMo = parseFloat(document.getElementById('equipCost').value) || 0;
+  var rsProd = document.querySelector('[name="rsprod"]:checked') ? document.querySelector('[name="rsprod"]:checked').value : 'excluded';
+
+  if (!sqft || !freq || freq === '') {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text-hint);text-align:center;padding:16px 0;">Enter sq ft, schedule, and frequency above to generate estimate.</div>';
+    return;
+  }
+
+  // Blended productivity rate from floor types
+  var ftSqft = {};
+  document.querySelectorAll('.zft input:checked').forEach(function(cb){
+    var zSqft = parseInt(cb.closest('.zone-card').querySelector('.zsqft').value)||0;
+    ftSqft[cb.value] = (ftSqft[cb.value]||0) + zSqft;
+  });
+  var ftKeys = Object.keys(ftSqft);
+  var blendedProd = ftKeys.length
+    ? ftKeys.reduce(function(sum,k){ return sum + (PRODUCTIVITY[k]||3000)*(ftSqft[k]/sqft); }, 0)
+    : 3000;
+
+  // Night schedule adds ~15% labor time (harder access, slower pace)
+  if (sched === 'night') blendedProd *= 0.87;
+  if (sched === 'both') blendedProd *= 0.82;
+
+  // Hours per visit, visits per month
+  var hoursPerVisit = sqft / blendedProd;
+  var visitsPerMonth = FREQ_MULTIPLIER[freq] || 4.33;
+  var hoursPerMonth = hoursPerVisit * visitsPerMonth;
+
+  // Revenue — industry sq ft rate × sqft × visits scaled to monthly
+  var sqftRate = SQFT_PRICE[vert] || 0.13;
+  // For one-time jobs price per visit flat
+  var monthlyRevenue, annualRevenue;
+  if (freq === 'onetime') {
+    monthlyRevenue = sqft * (SQFT_PRICE[vert] || 0.13) * 8; // one-time premium ~8×
+    annualRevenue = monthlyRevenue;
+  } else {
+    monthlyRevenue = sqft * sqftRate * (visitsPerMonth / 4.33); // normalized to standard month
+    annualRevenue = monthlyRevenue * 12;
+  }
+
+  // Costs
+  var laborCostMo = hoursPerMonth * laborRate;
+  var burdenCostMo = laborCostMo * (burdenPct / 100);
+  var rsCostMo = rsProd === 'included' ? (sqft / 10000) * 120 : 0; // ~$120/10k sqft/mo industry avg
+  var totalCostMo = laborCostMo + burdenCostMo + suppliesMo + equipMo + rsCostMo;
+  var grossProfitMo = monthlyRevenue - totalCostMo;
+  var grossMarginPct = monthlyRevenue > 0 ? (grossProfitMo / monthlyRevenue) * 100 : 0;
+
+  var mgClass = grossMarginPct >= 50 ? 'good' : grossMarginPct >= 35 ? 'warn' : 'bad';
+  var mgLabel = grossMarginPct >= 50 ? '✓ On target' : grossMarginPct >= 35 ? '⚠ Thin margin' : '✗ Below threshold';
+
+  var fmt = function(n){ return '$'+Math.round(n).toLocaleString(); };
+  var fmtH = function(n){ return n.toFixed(1)+'h'; };
+
+  var rsNote = rsProd === 'included'
+    ? '<div style="font-size:12px;color:var(--warning);margin-top:6px;">⚠ Restroom products included — cost estimated at industry avg. Confirm actual cost before proposal.</div>'
+    : rsProd === 'billback'
+    ? '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">ℹ Restroom products billed back separately — not included in margin calculation.</div>'
+    : '';
+
+  var suppliesNote = (!suppliesMo && !equipMo)
+    ? '<div style="font-size:12px;color:var(--warning);margin-top:6px;">⚠ Supplies and equipment costs not entered — margin may be overstated.</div>'
+    : '';
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div class="score-box"><div class="lbl">Est. monthly revenue</div><div class="val good">${fmt(monthlyRevenue)}</div></div>
+      <div class="score-box"><div class="lbl">Est. annual revenue</div><div class="val good">${fmt(annualRevenue)}</div></div>
+    </div>
+    <div style="border:.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:10px;">
+      <div style="padding:10px 14px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);">Monthly cost breakdown</div>
+      ${row('Est. hours / month', fmtH(hoursPerMonth) + ' ('+fmtH(hoursPerVisit)+' / visit × '+visitsPerMonth.toFixed(1)+' visits)')}
+      ${row('Labor cost', fmt(laborCostMo))}
+      ${row('Labor burden ('+burdenPct+'%)', fmt(burdenCostMo))}
+      ${suppliesMo ? row('Supplies', fmt(suppliesMo)) : row('Supplies', '<span style="color:var(--text-hint)">Not entered</span>')}
+      ${equipMo ? row('Equipment / overhead', fmt(equipMo)) : row('Equipment / overhead', '<span style="color:var(--text-hint)">Not entered</span>')}
+      ${rsProd === 'included' ? row('Restroom products (est.)', fmt(rsCostMo)) : ''}
+      <div style="padding:10px 14px;display:flex;justify-content:space-between;font-size:14px;font-weight:600;border-top:1px solid var(--border);">
+        <span>Total monthly cost</span><span>${fmt(totalCostMo)}</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div class="score-box"><div class="lbl">Monthly gross profit</div><div class="val ${mgClass}">${fmt(grossProfitMo)}</div></div>
+      <div class="score-box"><div class="lbl">Gross margin</div><div class="val ${mgClass}">${grossMarginPct.toFixed(1)}%<span style="font-size:12px;font-weight:400;display:block;">${mgLabel}</span></div></div>
+    </div>
+    ${rsNote}${suppliesNote}
+    <div style="font-size:11px;color:var(--text-hint);margin-top:10px;line-height:1.6;">
+      Revenue based on ${sqftRate.toFixed(2)}/sq ft/mo industry rate for ${vert||'commercial'} vertical.
+      Productivity: ${Math.round(blendedProd).toLocaleString()} sq ft/hr blended.
+      Rates are estimates — adjust inputs above before finalizing proposal.
+    </div>
+  `;
+}
+
+function row(label, val) {
+  return `<div style="padding:8px 14px;display:flex;justify-content:space-between;font-size:13px;border-bottom:.5px solid var(--border);"><span style="color:var(--text-muted)">${label}</span><span style="font-weight:500;">${val}</span></div>`;
+}
+
+
 var INDUSTRY_CONFIGS = {
   healthcare: {
     title: 'Healthcare / medical details',
@@ -907,6 +1066,9 @@ async function submitForm() {
     price_tier: tierEl === '—' ? null : tierEl,
     staffing_risk: document.getElementById('staffRisk').textContent === '—' ? null : document.getElementById('staffRisk').textContent,
     geo_zone: document.getElementById('geoZone').textContent === '—' ? null : document.getElementById('geoZone').textContent,
+    labor_rate: parseFloat(document.getElementById('laborRate').value)||null,
+    burden_rate: parseFloat(document.getElementById('burdenRate').value)||null,
+    restroom_products: document.querySelector('[name="rsprod"]:checked') ? document.querySelector('[name="rsprod"]:checked').value : null,
     photo_urls: photoUrls,
     vertical_details: getVerticalDetails(),
     status: 'submitted'
@@ -950,6 +1112,12 @@ function resetForm() {
   document.getElementById('flagsEl').innerHTML = '';
   document.getElementById('submitBtn').disabled = false;
   document.getElementById('submitBtn').textContent = 'Submit Site Walk';
+  document.getElementById('laborRate').value = '18';
+  document.getElementById('burdenRate').value = '28';
+  document.getElementById('suppliesCost').value = '';
+  document.getElementById('equipCost').value = '';
+  document.getElementById('profitResults').innerHTML = '<div style="font-size:13px;color:var(--text-hint);text-align:center;padding:16px 0;">Enter sq ft, schedule, and frequency above to generate estimate.</div>';
+  document.querySelectorAll('[name="rsprod"]').forEach(function(r,i){ r.checked = i===0; r.closest('.pill').classList.toggle('on', i===0); });
   document.getElementById('staffRisk').textContent = '—';
   document.getElementById('staffRisk').className = 'val';
   document.getElementById('geoZone').textContent = '—';
