@@ -498,6 +498,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <optgroup label="Supervisors">
           <option value="sup_Gustavo">Gustavo</option>
           <option value="sup_Damian">Damian</option>
+          <option value="sup_Santiago">Santiago Alzate</option>
           <option value="sup_Hector 1.0">Hector 1.0</option>
           <option value="sup_Hector 2.0">Hector 2.0</option>
           <option value="sup_Pablo">Pablo</option>
@@ -529,26 +530,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
   <!-- SUPERVISOR TAB -->
   <div class="tab-content" id="tab-supervisor">
     <div class="section-title">Submit Supply Order</div>
-
-    <div class="card" style="border-left:4px solid var(--gold);margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
-        <div class="card-title" style="margin-bottom:0"> How to Submit an Order</div>
-        <span style="font-size:12px;color:var(--gray-dark)">tap to expand ▾</span>
-      </div>
-      <div class="hidden" style="margin-top:12px;font-size:13px;color:var(--gray-dark);line-height:1.7">
-        <b>Ordering from Imperial (standard):</b><br>
-        1. Select your name and the job location.<br>
-        2. Choose <b>Order from Imperial</b> — use this when supplies need to be ordered from Imperial/Strauss.<br>
-        3. Select items and quantities, then review and submit.<br>
-        4. Mary will review, approve, and place the order with Imperial.<br><br>
-        <b>Distributing from warehouse stock:</b><br>
-        1. Select your name, then choose <b>Distribute from Stock</b>.<br>
-        2. The location list will expand to show <b>all locations</b> — including other supervisors' accounts — so you can log a handoff to any job site.<br>
-        3. Select items and quantities, then review and submit.<br>
-        4. Mary will confirm the distribution — no Imperial order will be placed.<br><br>
-        <b>Location not listed?</b> Select your name first, then choose <i>"My location isn't listed"</i> from the location dropdown to send a request to admin.
-      </div>
-    </div>
 
     <div class="card">
       <div class="card-title"> Order Details</div>
@@ -589,25 +570,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 
     <div id="supOrderArea" class="hidden">
       <div class="card">
-        <div class="card-title"> Order Type</div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:2px solid var(--navy);border-radius:8px;flex:1;min-width:180px" id="orderTypeImperialLabel">
-            <input type="radio" name="orderType" value="imperial" checked onchange="onOrderTypeChange()" style="accent-color:var(--navy)">
-            <div>
-              <div style="font-weight:600;font-size:13px">Order from Imperial</div>
-              <div style="font-size:11px;color:var(--gray-dark)">Mary will place this order with Imperial/Strauss</div>
-            </div>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:2px solid var(--gray-light);border-radius:8px;flex:1;min-width:180px" id="orderTypeStockLabel">
-            <input type="radio" name="orderType" value="stock" onchange="onOrderTypeChange()" style="accent-color:var(--navy)">
-            <div>
-              <div style="font-weight:600;font-size:13px">Distribute from Stock</div>
-              <div style="font-size:11px;color:var(--gray-dark)">Item is already in our warehouse — no Imperial order needed</div>
-            </div>
-          </label>
-        </div>
-      </div>
-      <div class="card">
         <div class="card-title"> Select Items</div>
         <div id="supCatalogForm"></div>
       </div>
@@ -627,6 +589,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <tbody id="supReviewBody"></tbody>
         </table>
         <div class="divider"></div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px"> Notes for Mary <span style="font-weight:400;color:var(--gray-dark)">(optional)</span></label>
+          <textarea id="supOrderNote" rows="3" placeholder="Any special instructions, delivery notes, or context for this order..." style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        </div>
         <div class="flex-gap mt-8">
           <button class="btn btn-outline" onclick="backToOrder()"><- Edit Order</button>
           <button class="btn btn-green" onclick="submitOrder()">OK Submit Order</button>
@@ -639,6 +605,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div style="font-size:48px;margin-bottom:12px"></div>
         <div class="section-title" style="justify-content:center">Order Submitted!</div>
         <p style="color:var(--gray-dark);margin-bottom:20px">Your order has been received by Mary Cintron for review.</p>
+        <div id="supConfirmNote" style="display:none;background:#f4f6fa;border-left:3px solid var(--gold);padding:8px 12px;border-radius:6px;font-size:13px;color:var(--navy);margin-bottom:16px;text-align:left"><b>Your note:</b> <span id="supConfirmNoteText"></span></div>
         <button class="btn btn-primary" onclick="resetSupForm()">Submit Another Order</button>
       </div>
     </div>
@@ -649,25 +616,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     <div class="section-title">
       Inventory Manager -- Order Review
       <span class="sub" id="maryPendingCount"></span>
-    </div>
-
-    <div class="card" style="border-left:4px solid var(--gold);margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
-        <div class="card-title" style="margin-bottom:0"> How to Process Orders</div>
-        <span style="font-size:12px;color:var(--gray-dark)">tap to expand ▾</span>
-      </div>
-      <div class="hidden" style="margin-top:12px;font-size:13px;color:var(--gray-dark);line-height:1.7">
-        <b>Standard Imperial order <span class="badge badge-warehouse" style="vertical-align:middle">Warehouse</span> or <span class="badge badge-dropship" style="vertical-align:middle">Drop Ship</span>:</b><br>
-        1. Review the order — adjust quantities or remove items if needed.<br>
-        2. Click <b>Mark Reviewed</b>, then set a delivery date.<br>
-        3. Click <b>Approve for Imperial</b> to move it to the Imperial CSV tab.<br>
-        4. In the Imperial CSV tab, select orders and download the CSV to send to Imperial.<br><br>
-        <b>Warehouse stock distribution <span class="badge" style="background:#7c3aed;color:white;vertical-align:middle">From Stock</span>:</b><br>
-        1. Review the order — the item is already in our warehouse, no Imperial order needed.<br>
-        2. Click <b>Mark Reviewed</b>.<br>
-        3. Click <b>✓ Fulfill from Stock</b> — this closes the order and records it for WinTeam. Do <u>not</u> send to Imperial.<br><br>
-        <b>WinTeam entry:</b> Use the WinTeam Reports tab at the end of each month to generate your Usage/Resale reference sheet. Both Imperial and stock orders will appear there.
-      </div>
     </div>
 
     <div class="flex-gap mb-8">
@@ -687,13 +635,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <select id="marySupervisorFilter" onchange="filterMaryOrders()">
         <option value="">All Supervisors</option>
       </select>
-      <span style="font-size:12px;color:var(--gray-dark);margin-left:4px">Group by:</span>
-      <select id="maryGroupBy" onchange="filterMaryOrders()" style="padding:6px 10px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px">
-        <option value="date">Date</option>
-        <option value="supervisor">Supervisor / Location</option>
-      </select>
       <button class="btn btn-outline btn-sm" onclick="switchTab('history')"> View History</button>
-      <button class="btn btn-outline btn-sm" onclick="printMaryOrders()"> Print</button>
       <button class="btn btn-danger btn-sm" onclick="archiveSentOrders()"> Archive Sent</button>
     </div>
 
@@ -1058,7 +1000,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         </div>
       </div>
     </div>
-  </div>
 
   <!-- WINTEAM REPORTS TAB -->
   <div class="tab-content" id="tab-winteam">
@@ -1146,9 +1087,7 @@ const sb = {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify(data)
     });
-    const insertJson = await r.json();
-    if (!r.ok) throw new Error(insertJson.message || insertJson.error || ("HTTP " + r.status));
-    return insertJson;
+    return r.json();
   },
   async update(table, data, match) {
     let url = `${SUPABASE_URL}/rest/v1/${table}?`;
@@ -1192,7 +1131,7 @@ const SUPERVISOR_LOCATIONS = {
 // Warehouse bulk orders always use: standard=1754002, rebill=1754200
 // 399 Knollwood building itself: standard=1754016, rebill=1754160
 const IMPERIAL_JOB_MAP = {
-  // -- CONFIRMED MAPPINGS --------------------------------------
+  // ── CONFIRMED MAPPINGS ──────────────────────────────────────
   "10050":  {"standard":"1754004","rebill":"1754400"},  // 480 North Broadway, Yonkers
   "10850":  {"standard":"1754015","rebill":"1754150"},  // Securitas-Diebold, 3 Westchester Plaza
   "11170":  {"standard":"1754026","rebill":"1754260"},  // Greenburgh Eleven UFSD
@@ -1233,7 +1172,7 @@ const IMPERIAL_JOB_MAP = {
   "51725":  {"standard":"1754853","rebill":"1754854"},  // 1 Station Plaza, Stamford
   "11240":  {"standard":"1754223","rebill":"1754622"},  // 500 White Plains Road, Tarrytown
 
-  // -- NOT YET MAPPED - will use bulk warehouse account --------
+  // ── NOT YET MAPPED — will use bulk warehouse account ────────
   // 10075, 10175, 11150, 11220, 20400, 20600, 21200, 23400,
   // 23720, 30125, 30650, 30720, 30730, 30800, 40100, 40101,
   // 40500, 40600, 45625, 50550, 50775, 51050, 51300, 51530,
@@ -1257,9 +1196,6 @@ let supCurrentJob = null;
 let supCurrentName = null;
 let locationProducts = {};  // loaded from Supabase or fallback
 let maryOrders = [];
-let maryPollInterval = null;
-let maryLastOrderCount = 0;
-let maryLastOrderIds = new Set();
 let selectedOrdersForExport = new Set();
 
 // ===========================================================
@@ -1326,12 +1262,7 @@ function doLogin() {
   if (!userVal) { alert('Please select your name.'); return; }
 
   const pw = document.getElementById('loginPassword').value;
-  // Block by value OR by name (catches any sup_ entries for protected people)
-  const selectedText = document.getElementById('loginUser').selectedOptions[0].textContent.trim();
-  const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
-  const needsPassword = PROTECTED_USERS.includes(userVal) || protectedNames.some(n => selectedText.includes(n));
-  if (needsPassword && pw !== ADMIN_PASSWORD) {
-    document.getElementById('passwordGroup').style.display = 'block';
+  if (PROTECTED_USERS.includes(userVal) && pw !== ADMIN_PASSWORD) {
     document.getElementById('loginError').style.display = 'block';
     return;
   }
@@ -1348,14 +1279,9 @@ function doLogin() {
 
   buildTabs();
   loadInitialData();
-  if (currentRole === "mary" || currentRole === "admin") {
-    requestNotificationPermission();
-    startMaryPolling();
-  }
 }
 
 function doLogout() {
-  stopMaryPolling();
   currentUser = null; currentRole = null;
   supQtys = {}; supCurrentJob = null;
   document.getElementById('mainApp').style.display = 'none';
@@ -1368,10 +1294,8 @@ function doLogout() {
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('loginUser').addEventListener('change', function() {
     const val = this.value;
-    const selectedText = this.selectedOptions[0].textContent.trim();
-    const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
     const pwGroup = document.getElementById('passwordGroup');
-    if (PROTECTED_USERS.includes(val) || protectedNames.some(n => selectedText.includes(n))) {
+    if (PROTECTED_USERS.includes(val)) {
       pwGroup.style.display = 'block';
       document.getElementById('loginPassword').focus();
     } else {
@@ -1395,9 +1319,8 @@ document.addEventListener('DOMContentLoaded', function() {
     Array.from(sel.querySelectorAll('option')).forEach(opt => {
       if (opt.value.startsWith('sup_')) opt.remove();
     });
-    // Exclude protected users from supervisor list to prevent password bypass
-    const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
-    sups.filter(s => !protectedNames.includes(s.name)).forEach(s => {
+    const divider = sel.querySelector('option[disabled]');
+    sups.forEach(s => {
       const opt = document.createElement('option');
       opt.value = 'sup_' + s.name;
       opt.textContent = s.name;
@@ -1451,19 +1374,10 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-btn').forEach(b => { if (b.dataset.tab === tabId) b.classList.add('active'); });
   if (tabId === 'admin') setTimeout(buildAdminPanel, 50);
   if (tabId === 'imperial') setTimeout(loadImperialOrders, 50);
-  if (tabId === 'winteam') setTimeout(function() {
-    const today = new Date().toISOString().split('T')[0];
-    const firstOfMonth = new Date(); firstOfMonth.setDate(1);
-    const fom = firstOfMonth.toISOString().split('T')[0];
-    if (!document.getElementById('wtRecFrom').value) document.getElementById('wtRecFrom').value = fom;
-    if (!document.getElementById('wtRecTo').value) document.getElementById('wtRecTo').value = today;
-    if (!document.getElementById('wtUsageFrom').value) document.getElementById('wtUsageFrom').value = fom;
-    if (!document.getElementById('wtUsageTo').value) document.getElementById('wtUsageTo').value = today;
-  }, 50);
 }
 
 // ===========================================================
-// LOAD INITIAL DATA - everything from Supabase
+// LOAD INITIAL DATA — everything from Supabase
 // ===========================================================
 async function submitMissingLocationRequest() {
   const name = document.getElementById('missingLocName').value.trim();
@@ -1474,15 +1388,13 @@ async function submitMissingLocationRequest() {
   const supervisor = document.getElementById('supName').value;
 
   try {
-    const locReqRes = await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests`, {
       method: 'POST',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ supervisor, location_name: name, address, job_number: job || null, notes: note, status: 'pending', created_at: new Date().toISOString() })
     });
-    if (!locReqRes.ok) throw new Error('Supabase error: ' + locReqRes.status);
   } catch(e) {
-    // Supabase table not set up yet - store in localStorage as fallback
-    console.warn('Location request fallback to localStorage:', e.message);
+    // If table doesn't exist yet, store in localStorage as fallback
     const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
     reqs.push({ supervisor, location_name: name, address, job_number: job || null, notes: note, status: 'pending', created_at: new Date().toISOString() });
     localStorage.setItem('kencal_loc_requests', JSON.stringify(reqs));
@@ -1521,40 +1433,23 @@ async function renderLocationRequests() {
     return;
   }
   container.innerHTML = reqs.map((r, i) => `
-    <div data-req-id="${r.id || 'local'}" style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:10px 14px;margin-bottom:8px">
+    <div style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:10px 14px;margin-bottom:8px">
       <div style="font-size:13px;font-weight:600">${r.location_name}</div>
       <div style="font-size:12px;color:#555;margin-top:3px">
-        ${r.address ? '? ' + r.address + '<br>' : ''}
+        ${r.address ? '📍 ' + r.address + '<br>' : ''}
         ${r.job_number ? 'Job #: ' + r.job_number + '<br>' : ''}
         ${r.notes ? 'Notes: ' + r.notes + '<br>' : ''}
         Requested by: <b>${r.supervisor}</b> &nbsp;|&nbsp; ${new Date(r.created_at).toLocaleDateString()}
       </div>
-      <button class="btn btn-outline btn-xs" style="margin-top:6px" onclick="dismissLocationRequest(${i})">? Dismiss (after adding to system)</button>
+      <button class="btn btn-outline btn-xs" style="margin-top:6px" onclick="dismissLocationRequest(${i})">✓ Dismiss (after adding to system)</button>
     </div>`).join('');
 }
 
-async function dismissLocationRequest(i) {
-  // Get current pending list to find the record
-  const container = document.getElementById('adminLocationRequests');
-  const allCards = container.querySelectorAll('[data-req-id]');
-  const reqId = allCards[i] ? allCards[i].dataset.reqId : null;
-
-  if (reqId && reqId !== 'local') {
-    // It's a Supabase record - update status there
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_requests?id=eq.${reqId}`, {
-        method: 'PATCH',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ status: 'done' })
-      });
-    } catch(e) { console.warn('Could not dismiss in Supabase:', e.message); }
-  } else {
-    // localStorage fallback
-    const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
-    const pending = reqs.filter(r => r.status === 'pending');
-    if (pending[i]) pending[i].status = 'done';
-    localStorage.setItem('kencal_loc_requests', JSON.stringify(reqs));
-  }
+function dismissLocationRequest(i) {
+  const reqs = JSON.parse(localStorage.getItem('kencal_loc_requests') || '[]');
+  const pending = reqs.filter(r => r.status === 'pending');
+  if (pending[i]) { pending[i].status = 'done'; }
+  localStorage.setItem('kencal_loc_requests', JSON.stringify(reqs.map((r,idx) => idx === i ? {...r, status:'done'} : r)));
   renderLocationRequests();
 }
 async function loadInitialData() {
@@ -1704,15 +1599,12 @@ async function seedSupervisors() {
 function rebuildLoginDropdown() {
   const sel = document.getElementById('loginUser');
   const currentVal = sel.value;
-  const protectedNames = ['Rick Storey', 'Mary Cintron', 'Santiago Alzate'];
   // Remove existing supervisor options
   const group = sel.querySelector('optgroup[label="Supervisors"]');
   if (group) group.innerHTML = '';
   const optgroup = group || document.createElement('optgroup');
   optgroup.label = 'Supervisors';
   Object.keys(SUPERVISOR_LOCATIONS).sort().forEach(name => {
-    // Never add protected users as supervisor options
-    if (protectedNames.includes(name)) return;
     const opt = document.createElement('option');
     opt.value = 'sup_' + name;
     opt.textContent = name;
@@ -1771,7 +1663,7 @@ function onSupNameChange() {
   // Always add "My location isn't listed" at the bottom
   const missingOpt = document.createElement('option');
   missingOpt.value = '__missing__';
-  missingOpt.textContent = '? My location isn\'t listed...';
+  missingOpt.textContent = '📍 My location isn\'t listed...';
   locSel.appendChild(missingOpt);
 
   if (currentRole === 'supervisor') {
@@ -1924,9 +1816,6 @@ async function submitOrder() {
     const isDS = DROPSHIP_JOBS.has(supCurrentJob);
     const itemCount = Object.keys(supQtys).length;
 
-    const orderTypeEl = document.querySelector('input[name="orderType"]:checked');
-    const orderType = orderTypeEl ? orderTypeEl.value : 'imperial';
-
     const orderData = {
       order_ref: orderRef,
       supervisor: supCurrentName,
@@ -1935,8 +1824,8 @@ async function submitOrder() {
       items: supQtys,
       status: 'pending',
       is_dropship: isDS,
-      order_type: orderType,
       item_count: itemCount,
+      notes: (document.getElementById('supOrderNote') ? document.getElementById('supOrderNote').value.trim() : ''),
       created_at: new Date().toISOString()
     };
 
@@ -1951,70 +1840,20 @@ async function submitOrder() {
 
     document.getElementById('supReviewArea').classList.add('hidden');
     document.getElementById('supConfirmArea').classList.remove('hidden');
+    // Show note back on confirmation if provided
+    var noteVal = document.getElementById('supOrderNote') ? document.getElementById('supOrderNote').value.trim() : '';
+    if (noteVal) {
+      document.getElementById('supConfirmNote').style.display = 'block';
+      document.getElementById('supConfirmNoteText').textContent = noteVal;
+    } else {
+      document.getElementById('supConfirmNote').style.display = 'none';
+    }
     supQtys = {};
   } catch(e) {
     alert('Error submitting order: ' + e.message + '\n\nPlease make sure the database tables are set up. See setup instructions.');
     console.error(e);
   }
   hideLoading();
-}
-
-// ===========================================================
-// REALTIME POLLING
-// ===========================================================
-function startMaryPolling() {
-  if (maryPollInterval) return;
-  maryPollInterval = setInterval(async function() {
-    if (currentRole !== "mary" && currentRole !== "admin") return;
-    try {
-      const orders = await sb.query("kencal_orders", {order: "created_at.desc"});
-      if (!orders || orders.error) return;
-      const newOrders = orders.filter(function(o) { return o.status === "pending" && !maryLastOrderIds.has(o.id); });
-      if (newOrders.length > 0) {
-        document.title = "(" + newOrders.length + " New Order" + (newOrders.length > 1 ? "s" : "") + ") Kencal Supply";
-        setTimeout(function() { document.title = "Kencal Supply"; }, 8000);
-        showOrderToast(newOrders);
-        if (Notification && Notification.permission === "granted") {
-          newOrders.forEach(function(o) {
-            new Notification("New Supply Order", {
-              body: (o.supervisor || "A supervisor") + " submitted an order for " + (o.location_name || o.job_number)
-            });
-          });
-        }
-      }
-      maryLastOrderIds = new Set(orders.map(function(o) { return o.id; }));
-      maryOrders = orders;
-      renderMaryOrders(maryOrders);
-      updatePendingCount();
-    } catch(e) {
-      console.warn("Polling error:", e.message);
-    }
-  }, 30000);
-}
-
-function stopMaryPolling() {
-  if (maryPollInterval) { clearInterval(maryPollInterval); maryPollInterval = null; }
-}
-
-function showOrderToast(newOrders) {
-  var existing = document.getElementById("maryOrderToast");
-  if (existing) existing.remove();
-  var names = newOrders.map(function(o) { return o.supervisor || "Unknown"; }).join(", ");
-  var toast = document.createElement("div");
-  toast.id = "maryOrderToast";
-  toast.setAttribute("style", "position:fixed;top:20px;right:20px;z-index:9999;background:#1a2744;color:white;padding:14px 20px;border-radius:10px;border-left:4px solid #c8972a;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:13px;max-width:320px;cursor:pointer");
-  toast.innerHTML = "<div style=\"font-weight:700;margin-bottom:4px\"> New Order Received!</div>" +
-    "<div style=\"opacity:0.85\">From: " + names + "</div>" +
-    "<div style=\"opacity:0.6;font-size:11px;margin-top:4px\">Click to dismiss</div>";
-  toast.onclick = function() { toast.remove(); };
-  document.body.appendChild(toast);
-  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 15000);
-}
-
-async function requestNotificationPermission() {
-  if (Notification && Notification.permission === "default") {
-    await Notification.requestPermission();
-  }
 }
 
 async function notifyMary(supervisorName, locationName, jobNumber, itemCount) {
@@ -2035,62 +1874,6 @@ async function notifyMary(supervisorName, locationName, jobNumber, itemCount) {
   }
 }
 
-function onOrderTypeChange() {
-  const val = document.querySelector('input[name="orderType"]:checked').value;
-  const imperialLabel = document.getElementById('orderTypeImperialLabel');
-  const stockLabel = document.getElementById('orderTypeStockLabel');
-  imperialLabel.style.borderColor = val === 'imperial' ? 'var(--navy)' : 'var(--gray-light)';
-  stockLabel.style.borderColor = val === 'stock' ? 'var(--navy)' : 'var(--gray-light)';
-
-  // When distributing from stock, show ALL locations (not just this supervisor's)
-  const name = document.getElementById('supName').value;
-  if (!name) return;
-  const locSel = document.getElementById('supLocation');
-  const previousJob = locSel.value;
-
-  locSel.innerHTML = '<option value="">-- Select location --</option>';
-
-  let locs;
-  if (val === 'stock') {
-    // All locations across all supervisors
-    const allJobs = new Set();
-    Object.values(SUPERVISOR_LOCATIONS).forEach(jobs => jobs.forEach(j => allJobs.add(j)));
-    locs = [...allJobs]
-      .map(j => ({ job: j, name: LOCATION_NAMES[j] || j }))
-      .filter(l => l.name)
-      .sort((a,b) => a.name.localeCompare(b.name));
-  } else {
-    // Only this supervisor's locations
-    const jobs = SUPERVISOR_LOCATIONS[name] || [];
-    locs = jobs.map(j => ({ job: j, name: LOCATION_NAMES[j] || j }))
-               .filter(l => l.name)
-               .sort((a,b) => a.name.localeCompare(b.name));
-  }
-
-  locs.forEach(l => {
-    const opt = document.createElement('option');
-    opt.value = l.job;
-    opt.textContent = l.name + ' (' + l.job + ')';
-    locSel.appendChild(opt);
-  });
-
-  // Add missing location option
-  const missingOpt = document.createElement('option');
-  missingOpt.value = '__missing__';
-  missingOpt.textContent = "? My location isn't listed...";
-  locSel.appendChild(missingOpt);
-
-  // Restore previous selection if still valid
-  if (previousJob && locSel.querySelector('option[value="' + previousJob + '"]')) {
-    locSel.value = previousJob;
-  } else {
-    // Reset order area since location changed
-    document.getElementById('supOrderArea').classList.add('hidden');
-    document.getElementById('supJobInfo').classList.add('hidden');
-    supQtys = {};
-  }
-}
-
 function resetSupForm() {
   supQtys = {};
   document.getElementById('supLocation').value = '';
@@ -2102,9 +1885,8 @@ function resetSupForm() {
   document.getElementById('supStickyBar').style.removeProperty('display');
   if (currentRole !== 'supervisor') document.getElementById('supName').value = '';
   else onSupNameChange();
-  // Reset order type to default
-  const imperialRadio = document.querySelector('input[name="orderType"][value="imperial"]');
-  if (imperialRadio) { imperialRadio.checked = true; onOrderTypeChange(); }
+  var noteField = document.getElementById('supOrderNote');
+  if (noteField) noteField.value = '';
 }
 
 // ===========================================================
@@ -2116,7 +1898,6 @@ async function loadMaryOrders() {
     const orders = await sb.query('kencal_orders', {order: 'created_at.desc'});
     if (orders && orders.error) { throw new Error(orders.error.message); }
     maryOrders = orders || [];
-    maryLastOrderIds = new Set(maryOrders.map(function(o) { return o.id; }));
     renderMaryOrders(maryOrders);
     updatePendingCount();
     populateSupervisorFilter();
@@ -2229,19 +2010,19 @@ async function analyzeOrderFlags(order) {
   });
 
   if (!hasAnyHistory && Object.keys(currentItems).length > 0) {
-    flags.push({ type: 'yellow', msg: '?? No order history found for this location - treating all items as new.' });
+    flags.push({ type: 'yellow', msg: '⚠️ No order history found for this location — treating all items as new.' });
     Object.keys(currentItems).forEach(id => { itemFlags[id] = 'new'; });
     return { flags, itemFlags };
   }
 
   if (redCount > 0) {
-    flags.push({ type: 'red', msg: `? ${redCount} item${redCount>1?'s':''} ordered significantly higher than usual. Review quantities highlighted in red below.` });
+    flags.push({ type: 'red', msg: `🚩 ${redCount} item${redCount>1?'s':''} ordered significantly higher than usual. Review quantities highlighted in red below.` });
   }
   if (yellowCount > 0) {
-    flags.push({ type: 'yellow', msg: `?? ${yellowCount} item${yellowCount>1?'s':''} have no order history for this location - verify before sending to Imperial.` });
+    flags.push({ type: 'yellow', msg: `⚠️ ${yellowCount} item${yellowCount>1?'s':''} have no order history for this location — verify before sending to Imperial.` });
   }
   if (redCount === 0 && yellowCount === 0) {
-    flags.push({ type: 'green', msg: `? All quantities look normal based on 2025-2026 order history.` });
+    flags.push({ type: 'green', msg: `✅ All quantities look normal based on 2025–2026 order history.` });
   }
 
   return { flags, itemFlags };
@@ -2253,39 +2034,8 @@ function renderMaryOrders(orders) {
     container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No orders found.</p></div>';
     return;
   }
-
-  const groupBy = document.getElementById('maryGroupBy') ? document.getElementById('maryGroupBy').value : 'date';
-
-  if (groupBy === 'supervisor') {
-    // Group by supervisor, then by location within each supervisor
-    const grouped = {};
-    orders.forEach(function(o) {
-      const sup = o.supervisor || 'Unknown';
-      const loc = o.location_name || o.job_number || 'Unknown';
-      if (!grouped[sup]) grouped[sup] = {};
-      if (!grouped[sup][loc]) grouped[sup][loc] = [];
-      grouped[sup][loc].push(o);
-    });
-
-    let html = '';
-    Object.keys(grouped).sort().forEach(function(sup) {
-      html += '<div style="margin-bottom:24px">';
-      html += '<div style="background:var(--navy);color:white;padding:10px 16px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px">' + sup + '</div>';
-      const locations = grouped[sup];
-      Object.keys(locations).sort().forEach(function(loc) {
-        html += '<div style="border-left:3px solid var(--gold);margin-left:8px;padding-left:0;margin-bottom:4px">';
-        html += '<div style="background:var(--light-bg,#f4f6fa);padding:7px 14px;font-size:12px;font-weight:600;color:var(--navy);border-bottom:1px solid var(--gray-light)">' + loc + '</div>';
-        html += locations[loc].map(function(order) { return renderOrderCard(order, 'mary'); }).join('');
-        html += '</div>';
-      });
-      html += '</div>';
-    });
-    container.innerHTML = html;
-  } else {
-    // Default: date order
-    container.innerHTML = orders.map(order => renderOrderCard(order, 'mary')).join('');
-  }
-
+  // Render cards first, then async-inject flags
+  container.innerHTML = orders.map(order => renderOrderCard(order, 'mary')).join('');
   // Run flag analysis in background for each pending/reviewed order
   orders.forEach(order => {
     if (order.status === 'pending' || order.status === 'reviewed') {
@@ -2294,99 +2044,6 @@ function renderMaryOrders(orders) {
       }).catch(() => {});
     }
   });
-}
-
-function printMaryOrders() {
-  const status = document.getElementById('maryStatusFilter').value;
-  const sup = document.getElementById('marySupervisorFilter').value;
-  const groupBy = document.getElementById('maryGroupBy').value;
-  const printDate = new Date().toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'});
-
-  let filtered = maryOrders;
-  if (status === 'active') filtered = filtered.filter(o => o.status !== 'sent');
-  else if (status) filtered = filtered.filter(o => o.status === status);
-  if (sup) filtered = filtered.filter(o => o.supervisor === sup);
-
-  if (!filtered.length) { alert('No orders to print.'); return; }
-
-  const statusLabel = status === 'active' ? 'Active Orders' : status ? status.charAt(0).toUpperCase() + status.slice(1) : 'All Orders';
-  const groupLabel = groupBy === 'supervisor' ? 'Grouped by Supervisor / Location' : 'Grouped by Date';
-
-  let bodyHtml = '';
-
-  if (groupBy === 'supervisor') {
-    const grouped = {};
-    filtered.forEach(function(o) {
-      const s = o.supervisor || 'Unknown';
-      const l = o.location_name || o.job_number || 'Unknown';
-      if (!grouped[s]) grouped[s] = {};
-      if (!grouped[s][l]) grouped[s][l] = [];
-      grouped[s][l].push(o);
-    });
-
-    Object.keys(grouped).sort().forEach(function(supName) {
-      bodyHtml += '<div class="sup-group">';
-      bodyHtml += '<div class="sup-header">' + supName + '</div>';
-      Object.keys(grouped[supName]).sort().forEach(function(loc) {
-        bodyHtml += '<div class="loc-header">' + loc + '</div>';
-        grouped[supName][loc].forEach(function(o) { bodyHtml += orderRow(o); });
-      });
-      bodyHtml += '</div>';
-    });
-  } else {
-    filtered.forEach(function(o) { bodyHtml += orderRow(o); });
-  }
-
-  function orderRow(o) {
-    const items = o.items || {};
-    const itemList = Object.values(items).map(function(i) {
-      return '<tr><td>' + (i.name || i.item_number || '') + '</td><td style="text-align:center">' + i.qty + '</td><td>' + (i.unit || '') + '</td></tr>';
-    }).join('');
-    const badge = o.order_type === 'stock' ? '<span class="badge stock">From Stock</span>' :
-                  o.is_dropship ? '<span class="badge drop">Drop Ship</span>' : '<span class="badge wh">Warehouse</span>';
-    return '<div class="order">' +
-      '<div class="order-head">' +
-        '<span><b>' + (o.location_name || o.job_number) + '</b> &nbsp; Job #' + (o.job_number || '') + ' &nbsp; ' + badge + '</span>' +
-        '<span class="order-meta">Status: ' + o.status + ' &nbsp;|&nbsp; ' + new Date(o.created_at).toLocaleDateString() + '</span>' +
-      '</div>' +
-      '<table><thead><tr><th>Item</th><th>Qty</th><th>Unit</th></tr></thead><tbody>' + itemList + '</tbody></table>' +
-      (o.notes ? '<div class="notes">Notes: ' + o.notes + '</div>' : '') +
-    '</div>';
-  }
-
-  const win = window.open('', '_blank');
-  win.document.write(
-    '<!DOCTYPE html><html><head><title>Order Review Report</title><style>' +
-    'body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:20px}' +
-    'h1{font-size:18px;color:#1a2744;margin-bottom:2px}' +
-    '.meta{font-size:11px;color:#666;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #c8972a}' +
-    '.sup-group{margin-bottom:20px;page-break-inside:avoid}' +
-    '.sup-header{background:#1a2744;color:white;padding:8px 12px;font-weight:bold;font-size:13px;border-radius:4px 4px 0 0}' +
-    '.loc-header{background:#f4f6fa;padding:6px 12px;font-weight:600;font-size:11px;color:#1a2744;border-left:3px solid #c8972a;margin-bottom:2px}' +
-    '.order{border:1px solid #e0e4ee;border-radius:4px;margin-bottom:8px;page-break-inside:avoid}' +
-    '.order-head{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:#f8f9fc;border-bottom:1px solid #e0e4ee;flex-wrap:wrap;gap:4px}' +
-    '.order-meta{font-size:10px;color:#666}' +
-    '.notes{padding:5px 10px;font-size:10px;color:#555;font-style:italic}' +
-    'table{width:100%;border-collapse:collapse}' +
-    'th{background:#243358;color:white;padding:4px 8px;text-align:left;font-size:10px}' +
-    'td{padding:4px 8px;border-bottom:1px solid #eee;font-size:11px}' +
-    'tr:last-child td{border-bottom:none}' +
-    '.badge{font-size:9px;padding:2px 6px;border-radius:3px;font-weight:bold}' +
-    '.badge.stock{background:#7c3aed;color:white}' +
-    '.badge.drop{background:#2563eb;color:white}' +
-    '.badge.wh{background:#1a2744;color:white}' +
-    '.footer{margin-top:16px;font-size:9px;color:#aaa;text-align:center;border-top:1px solid #ccc;padding-top:6px}' +
-    '@media print{.sup-group,.order{page-break-inside:avoid}.sup-header,.order-head{-webkit-print-color-adjust:exact;print-color-adjust:exact}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}' +
-    '</style></head><body>' +
-    '<h1>Kencal Supply -- Order Review Report</h1>' +
-    '<div class="meta">Status: <b>' + statusLabel + '</b> &nbsp;&nbsp; ' + groupLabel + ' &nbsp;&nbsp; Printed: ' + printDate + ' &nbsp;&nbsp; ' + filtered.length + ' orders</div>' +
-    bodyHtml +
-    '<div class="footer">Kencal Maintenance &nbsp; Supply Order Tool</div>' +
-    '</body></html>'
-  );
-  win.document.close();
-  win.focus();
-  setTimeout(function() { win.print(); }, 500);
 }
 
 function injectOrderFlags(orderId, flags, itemFlags) {
@@ -2416,10 +2073,10 @@ function injectOrderFlags(orderId, flags, itemFlags) {
         // Add inline label
         const qtyCell = row.querySelectorAll('td')[2];
         if (qtyCell && flagType === 'high') {
-          qtyCell.innerHTML += ' <span style="color:#e53e3e;font-size:11px;font-weight:700">? HIGH</span>';
+          qtyCell.innerHTML += ' <span style="color:#e53e3e;font-size:11px;font-weight:700">▲ HIGH</span>';
         }
         if (qtyCell && flagType === 'new') {
-          qtyCell.innerHTML += ' <span style="color:#d97706;font-size:11px;font-weight:700">? NEW</span>';
+          qtyCell.innerHTML += ' <span style="color:#d97706;font-size:11px;font-weight:700">★ NEW</span>';
         }
       }
     });
@@ -2431,8 +2088,7 @@ function renderOrderCard(order, view) {
   const itemCount = Object.keys(items).length;
   const dateStr = new Date(order.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const statusBadge = `<span class="badge badge-${order.status}">${order.status}</span>`;
-  const isStock = order.order_type === 'stock';
-  const dsBadge = isStock ? `<span class="badge" style="background:#7c3aed;color:white">From Stock</span>` : order.is_dropship ? `<span class="badge badge-dropship">Drop Ship</span>` : `<span class="badge badge-warehouse">Warehouse</span>`;
+  const dsBadge = order.is_dropship ? `<span class="badge badge-dropship">Drop Ship</span>` : `<span class="badge badge-warehouse">Warehouse</span>`;
   const isSent = order.status === 'sent';
   const cardStyle = isSent ? 'opacity:0.45;filter:grayscale(0.3)' : '';
 
@@ -2468,12 +2124,8 @@ function renderOrderCard(order, view) {
       }
       const reviewedBtn = order.status === 'pending' ?
         '<button class="btn btn-primary btn-sm" onclick="updateOrderStatus(' + order.id + ',\'reviewed\')">Mark Reviewed</button>' : '';
-      const isStockOrder = order.order_type === 'stock';
       const approveBtn = order.status === 'reviewed' ?
-        (isStockOrder
-          ? '<button class="btn btn-sm" style="background:#7c3aed;color:white" onclick="fulfillFromStock(' + order.id + ')">? Fulfill from Stock</button>'
-          : '<button class="btn btn-green btn-sm" onclick="updateOrderStatus(' + order.id + ',\'approved\')">Approve for Imperial</button>')
-        : '';
+        '<button class="btn btn-green btn-sm" onclick="updateOrderStatus(' + order.id + ',\'approved\')">Approve for Imperial</button>' : '';
       maryControls =
         '<div class="delivery-date-row">' +
         '<label>Delivery Date:</label>' +
@@ -2495,6 +2147,7 @@ function renderOrderCard(order, view) {
             ${statusBadge} ${dsBadge}
           </div>
           <div class="order-meta">Supervisor: ${order.supervisor} &nbsp;&nbsp; ${itemCount} items &nbsp;&nbsp; ${dateStr} &nbsp;&nbsp; Ref: ${order.order_ref}</div>
+          ${order.notes ? '<div style="margin-top:4px;font-size:12px;color:var(--navy);background:var(--light-bg,#f4f6fa);padding:4px 8px;border-radius:4px;border-left:3px solid var(--gold)"> ' + order.notes + '</div>' : ''}
         </div>
         <span style="color:var(--gray);font-size:18px"></span>
       </div>
@@ -2511,14 +2164,6 @@ function renderOrderCard(order, view) {
 function toggleOrderCard(id) {
   const body = document.getElementById('orderBody' + id);
   body.classList.toggle('open');
-}
-
-async function fulfillFromStock(id) {
-  if (!confirm('Mark this order as fulfilled from warehouse stock? It will be sent to WinTeam and no Imperial order will be placed.')) return;
-  showLoading('Updating...');
-  await sb.update('kencal_orders', {status: 'sent', updated_at: new Date().toISOString()}, {id});
-  await loadMaryOrders();
-  hideLoading();
 }
 
 async function updateOrderStatus(id, status) {
@@ -2848,7 +2493,7 @@ function buildImperialSummary() {
       if (unmapped) tr.style.background = '#fff8e1';
       tr.id = `impRow_${overrideKey}`;
       tr.innerHTML = `
-        <td id="impAcct_${overrideKey}">${acct}${unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">?? NOT MAPPED</span>' : ''}</td>
+        <td id="impAcct_${overrideKey}">${acct}${unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ NOT MAPPED</span>' : ''}</td>
         <td>${order.location_name}</td>
         <td>${id}</td>
         <td>${item.name}</td>
@@ -3001,7 +2646,7 @@ function filterAdminLocations() {
   resultBox.innerHTML = results.map(r =>
     `<div style="padding:3px 0;border-bottom:1px solid #cce0f5">
       <b>${r.locName}</b> <span style="color:#888;font-size:11px">(Job #${r.job})</span><br>
-      <span style="color:#1F4E79;font-size:12px">? ${r.supervisors.length ? r.supervisors.join(', ') : '<i style="color:#999">No supervisor assigned</i>'}</span>
+      <span style="color:#1F4E79;font-size:12px">👤 ${r.supervisors.length ? r.supervisors.join(', ') : '<i style="color:#999">No supervisor assigned</i>'}</span>
     </div>`
   ).join('');
   resultBox.style.display = 'block';
@@ -3137,7 +2782,7 @@ async function loadAdminProducts() {
   Object.entries(products).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).forEach(([id, info]) => {
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-light);font-size:13px;gap:8px';
-    div.innerHTML = `<div><strong>${id}</strong> - ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
+    div.innerHTML = `<div><strong>${id}</strong> — ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
     const btnDiv = div.querySelector('div:last-child');
 
     const editBtn = document.createElement('button');
@@ -4135,7 +3780,7 @@ async function loadWTUsage() {
           byLocation[key] = { job: group.job, jobName: group.jobName, supervisor: group.supervisor, destType: group.destType, items: [], dates: new Set() };
         }
         group.items.forEach(function(item) {
-          // Merge duplicate item numbers - add quantities
+          // Merge duplicate item numbers — add quantities
           const existing = byLocation[key].items.find(i => i.item_number === item.item_number);
           if (existing) {
             existing.quantity = parseFloat(existing.quantity) + parseFloat(item.quantity);
@@ -4150,7 +3795,7 @@ async function loadWTUsage() {
         transactionCount++;
         const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
         const dateRange = [...group.dates].sort().join(', ');
-        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items at this location are sourced from Brady Industries - place a separate Brady order.</td></tr>' : '';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
 
         html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
           '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
@@ -4187,7 +3832,7 @@ async function loadWTUsage() {
       Object.values(byDateJob).forEach(function(group) {
         transactionCount++;
         const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items at this location are sourced from Brady Industries - place a separate Brady order.</td></tr>' : '';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
 
         html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
           '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
@@ -4256,7 +3901,7 @@ function reRenderWTUsage() {
       transactionCount++;
       const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
       const dateRange = [...group.dates].sort().join(', ');
-      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items sourced from Brady Industries - place a separate order.</td></tr>' : '';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
       html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
@@ -4275,7 +3920,7 @@ function reRenderWTUsage() {
     Object.values(byDateJob).forEach(function(group) {
       transactionCount++;
       const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">?? Brady Industries: Some items sourced from Brady Industries - place a separate order.</td></tr>' : '';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
       html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
@@ -4334,64 +3979,25 @@ function printWTReceived() {
 
 function printWTUsage() {
   const container = document.getElementById('wtUsageContent');
-  const rawData = container._rawData;
-  if (!rawData) { alert('Please load the report first.'); return; }
+  const data = container._data;
+  if (!data) { alert('Please load the report first.'); return; }
 
-  const { from, to, byDateJob, dists } = rawData;
-  const groupBy = document.getElementById('wtUsageGroupBy') ? document.getElementById('wtUsageGroupBy').value : 'date';
   const printDate = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
   let bodyHtml = '';
-  let transactionCount = 0;
 
-  // Build groups based on current Group By selection
-  var groups = [];
-  if (groupBy === 'location') {
-    const byLocation = {};
-    Object.values(byDateJob).forEach(function(group) {
-      const key = group.job;
-      if (!byLocation[key]) {
-        byLocation[key] = { job: group.job, jobName: group.jobName, supervisor: group.supervisor, destType: group.destType, items: [], dates: new Set() };
-      }
-      group.items.forEach(function(item) {
-        const existing = byLocation[key].items.find(function(i) { return i.item_number === item.item_number; });
-        if (existing) {
-          existing.quantity = parseFloat(existing.quantity) + parseFloat(item.quantity);
-        } else {
-          byLocation[key].items.push(Object.assign({}, item));
-        }
-        byLocation[key].dates.add(group.date);
-      });
-    });
-    groups = Object.values(byLocation).sort(function(a, b) { return a.jobName.localeCompare(b.jobName); });
-  } else {
-    groups = Object.values(byDateJob);
-  }
-
-  groups.forEach(function(group) {
-    transactionCount++;
+  data.groups.forEach(function(group) {
     const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
     const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ?
-      '<div style="background:#fff3e0;border-left:3px solid #e65100;padding:5px 10px;font-size:10px;color:#e65100;margin-bottom:4px"><b>?? Brady Industries:</b> Some items at this location are sourced from Brady Industries - place a separate Brady order in addition to Imperial.</div>' : '';
-
-    // Date/meta line depends on grouping mode
-    var metaText;
-    if (groupBy === 'location') {
-      const dateRange = [...group.dates].sort().join(', ');
-      metaText = 'Job # ' + group.job + ' &nbsp;&nbsp; ' + typeLabel + ' &nbsp;&nbsp; ' + dateRange;
-    } else {
-      metaText = 'Job # ' + group.job + ' &nbsp;&nbsp; Date: ' + group.date + ' &nbsp;&nbsp; ' + typeLabel;
-    }
-
-    const qtyLabel = groupBy === 'location' ? 'Total Qty' : 'Quantity';
+      '<div style="background:#fff3e0;border-left:3px solid #e65100;padding:5px 10px;font-size:10px;color:#e65100;margin-bottom:4px"><b>⚠️ Brady Industries:</b> Some items at this location are sourced from Brady Industries — place a separate Brady order in addition to Imperial.</div>' : '';
 
     bodyHtml += '<div class="transaction">' +
       '<div class="trans-header">' +
       '<span class="trans-title">' + group.jobName + (group.supervisor ? ' -> ' + group.supervisor : '') + '</span>' +
-      '<span class="trans-meta">' + metaText + '</span>' +
+      '<span class="trans-meta">Job # ' + group.job + ' &nbsp;&nbsp; Date: ' + group.date + ' &nbsp;&nbsp; ' + typeLabel + '</span>' +
       '</div>' +
       '<div class="trans-settings">Transaction Type: Usage/Resale &nbsp;&nbsp; Warehouse: Main Warehouse &nbsp;&nbsp; Type: Supplies &nbsp;&nbsp; Status: Open -> Shipped/Closed</div>' +
       bradyNote +
-      '<table><thead><tr><th>Item Number</th><th>Item Description</th><th>' + qtyLabel + '</th><th>Measure</th><th>Resale Price</th><th>Vendor</th></tr></thead><tbody>';
+      '<table><thead><tr><th>Item Number</th><th>Item Description</th><th>Quantity</th><th>Measure</th><th>Resale Price</th><th>Vendor</th></tr></thead><tbody>';
 
     group.items.forEach(function(item) {
       const resaleInfo = getResalePrice(group.job, item.item_number, 0);
@@ -4412,7 +4018,6 @@ function printWTUsage() {
     bodyHtml += '</tbody></table></div>';
   });
 
-  const groupLabel = groupBy === 'location' ? 'locations' : 'transactions';
   const win = window.open('', '_blank');
   win.document.write(
     '<!DOCTYPE html><html><head><title>WinTeam Usage Report</title><style>' +
@@ -4430,10 +4035,9 @@ function printWTUsage() {
     'tr:last-child td{border-bottom:none;} ' +
     '.footer{margin-top:16px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px;} ' +
     '@media print{.transaction{page-break-inside:avoid;} .trans-header,.trans-title{-webkit-print-color-adjust:exact;print-color-adjust:exact;} th{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}' +
-    '@keyframes slideIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } } #maryOrderToast { animation: slideIn 0.3s ease; }' +
     '</style></head><body>' +
     '<h1>WinTeam -- Usage / Resale Entry Reference</h1>' +
-    '<div class="meta">Period: <strong>' + from + ' to ' + to + '</strong> &nbsp;&nbsp; Generated: ' + printDate + ' &nbsp;&nbsp; ' + transactionCount + ' ' + groupLabel + ' to enter</div>' +
+    '<div class="meta">Period: <strong>' + data.from + ' to ' + data.to + '</strong> &nbsp;&nbsp; Generated: ' + printDate + ' &nbsp;&nbsp; ' + data.groups.length + ' transactions to enter</div>' +
     bodyHtml +
     '<div class="footer">Kencal Maintenance &nbsp;&nbsp; Prices auto-populated in WinTeam from Item Master File &nbsp;&nbsp; Resale prices are suggestions based on historical data</div>' +
     '</body></html>'
