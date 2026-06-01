@@ -589,10 +589,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <tbody id="supReviewBody"></tbody>
         </table>
         <div class="divider"></div>
-        <div style="margin-bottom:12px">
-          <label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px"> Notes for Mary <span style="font-weight:400;color:var(--gray-dark)">(optional)</span></label>
-          <textarea id="supOrderNote" rows="3" placeholder="Any special instructions, delivery notes, or context for this order..." style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
-        </div>
         <div class="flex-gap mt-8">
           <button class="btn btn-outline" onclick="backToOrder()"><- Edit Order</button>
           <button class="btn btn-green" onclick="submitOrder()">OK Submit Order</button>
@@ -605,7 +601,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div style="font-size:48px;margin-bottom:12px"></div>
         <div class="section-title" style="justify-content:center">Order Submitted!</div>
         <p style="color:var(--gray-dark);margin-bottom:20px">Your order has been received by Mary Cintron for review.</p>
-        <div id="supConfirmNote" style="display:none;background:#f4f6fa;border-left:3px solid var(--gold);padding:8px 12px;border-radius:6px;font-size:13px;color:var(--navy);margin-bottom:16px;text-align:left"><b>Your note:</b> <span id="supConfirmNoteText"></span></div>
         <button class="btn btn-primary" onclick="resetSupForm()">Submit Another Order</button>
       </div>
     </div>
@@ -1374,6 +1369,22 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-btn').forEach(b => { if (b.dataset.tab === tabId) b.classList.add('active'); });
   if (tabId === 'admin') setTimeout(buildAdminPanel, 50);
   if (tabId === 'imperial') setTimeout(loadImperialOrders, 50);
+  if (tabId === 'winteam') setTimeout(function() {
+    const today = new Date().toISOString().split('T')[0];
+    const firstOfMonth = new Date();
+    firstOfMonth.setDate(1);
+    const fom = firstOfMonth.toISOString().split('T')[0];
+    const recFrom = document.getElementById('wtRecFrom');
+    const recTo = document.getElementById('wtRecTo');
+    const usageFrom = document.getElementById('wtUsageFrom');
+    const usageTo = document.getElementById('wtUsageTo');
+    if (recFrom && !recFrom.value) recFrom.value = fom;
+    if (recTo && !recTo.value) recTo.value = today;
+    if (usageFrom && !usageFrom.value) usageFrom.value = fom;
+    if (usageTo && !usageTo.value) usageTo.value = today;
+    if (typeof loadWTReceived === 'function') loadWTReceived();
+    if (typeof loadWTUsage === 'function') loadWTUsage();
+  }, 100);
 }
 
 // ===========================================================
@@ -1825,7 +1836,6 @@ async function submitOrder() {
       status: 'pending',
       is_dropship: isDS,
       item_count: itemCount,
-      notes: (document.getElementById('supOrderNote') ? document.getElementById('supOrderNote').value.trim() : ''),
       created_at: new Date().toISOString()
     };
 
@@ -1840,14 +1850,6 @@ async function submitOrder() {
 
     document.getElementById('supReviewArea').classList.add('hidden');
     document.getElementById('supConfirmArea').classList.remove('hidden');
-    // Show note back on confirmation if provided
-    var noteVal = document.getElementById('supOrderNote') ? document.getElementById('supOrderNote').value.trim() : '';
-    if (noteVal) {
-      document.getElementById('supConfirmNote').style.display = 'block';
-      document.getElementById('supConfirmNoteText').textContent = noteVal;
-    } else {
-      document.getElementById('supConfirmNote').style.display = 'none';
-    }
     supQtys = {};
   } catch(e) {
     alert('Error submitting order: ' + e.message + '\n\nPlease make sure the database tables are set up. See setup instructions.');
@@ -1885,8 +1887,6 @@ function resetSupForm() {
   document.getElementById('supStickyBar').style.removeProperty('display');
   if (currentRole !== 'supervisor') document.getElementById('supName').value = '';
   else onSupNameChange();
-  var noteField = document.getElementById('supOrderNote');
-  if (noteField) noteField.value = '';
 }
 
 // ===========================================================
@@ -2147,7 +2147,6 @@ function renderOrderCard(order, view) {
             ${statusBadge} ${dsBadge}
           </div>
           <div class="order-meta">Supervisor: ${order.supervisor} &nbsp;&nbsp; ${itemCount} items &nbsp;&nbsp; ${dateStr} &nbsp;&nbsp; Ref: ${order.order_ref}</div>
-          ${order.notes ? '<div style="margin-top:4px;font-size:12px;color:var(--navy);background:var(--light-bg,#f4f6fa);padding:4px 8px;border-radius:4px;border-left:3px solid var(--gold)"> ' + order.notes + '</div>' : ''}
         </div>
         <span style="color:var(--gray);font-size:18px"></span>
       </div>
@@ -3630,20 +3629,7 @@ document.addEventListener('click', function(e) {
 
 const MARKUP_CONFIG = {"standard": {"248": 37.6, "Ec3037n10": 42.0, "R4048K16": 56.5, "CFold": 22.0, "Max58": 93.2, "782": 22.1, "MB540A": 12.6, "KIMB07410": 10.1, "1890": 8.6, "NP5207": 24.5, "Purell775302": 14.9, "1960": 14.1, "Supplies": 15.0, "kimb25703": 10.0, "vbmf91k": 20.0, "np6800ew": 8.9, "7713": 9.0, "DBattery": 19.6, "4007": 5.2, "L00087": 8.5, "gojo194102": 10.0, "Shield": 17.2, "290089": 10.0, "518604": 15.9, "Purell777202": 10.9, "spar3305": 7.7, "P100B16150SOM": 10.0, "Pi1616": 7.7, "PG8941": 18.9, "Supplies-A": 14.8}, "customer_overrides": {"50909": {"248": 0.0, "Ec3037n10": 25.5}, "22136": {"248": 23.6}, "21801": {"248": 51.3}, "22800": {"248": 33.2}, "11300": {"Ec3037n10": 10.0, "R4048K16": 10.0}, "51560": {"Ec3037n10": 10.0, "R4048K16": 10.0}, "11350": {"Ec3037n10": 15.0, "R4048K16": 15.0}, "23103": {"CFold": 15.0}, "47040": {"CFold": 15.0}, "23101b": {"Max58": 114.8}, "23101c": {"Max58": 114.8}, "20800": {"Max58": 103.4}, "45525": {"Max58": 101.3}, "51616": {"CFold": 100.3}, "50150": {"89420": 33.4}, "50675": {"750386": 30.5}, "51600": {"NP5207": 49.2}, "51600b": {"NP5207": 49.5}, "30830": {"NP5207": 10.0}, "51730": {"bmp46rl": 36.2}}, "item_standard": {"248": {"markup_pct": 37.6, "standard_resale": 46.509}, "Ec3037n10": {"markup_pct": 42.0, "standard_resale": 26.27}, "R4048K16": {"markup_pct": 56.5, "standard_resale": 39.047}, "CFold": {"markup_pct": 22.0, "standard_resale": 23.79}, "Max58": {"markup_pct": 93.2, "standard_resale": 40.475}, "782": {"markup_pct": 22.1, "standard_resale": 28.193}, "MB540A": {"markup_pct": 12.6, "standard_resale": 27.396}, "KIMB07410": {"markup_pct": 10.1, "standard_resale": 106.621}, "1890": {"markup_pct": 8.6, "standard_resale": 48.218}, "NP5207": {"markup_pct": 24.5, "standard_resale": 40.425}, "Purell775302": {"markup_pct": 14.9, "standard_resale": 80.487}, "1960": {"markup_pct": 14.1, "standard_resale": 52.189}, "Supplies": {"markup_pct": 15.0, "standard_resale": 11.488}, "kimb25703": {"markup_pct": 10.0, "standard_resale": 109.087}, "vbmf91k": {"markup_pct": 20.0, "standard_resale": 27.36}, "np6800ew": {"markup_pct": 8.9, "standard_resale": 33.334}, "7713": {"markup_pct": 9.0, "standard_resale": 80.758}, "DBattery": {"markup_pct": 19.6, "standard_resale": 22.437}, "4007": {"markup_pct": 5.2, "standard_resale": 77.406}, "L00087": {"markup_pct": 8.5, "standard_resale": 7.063}, "gojo194102": {"markup_pct": 10.0, "standard_resale": 60.665}, "Shield": {"markup_pct": 17.2, "standard_resale": 64.976}, "290089": {"markup_pct": 10.0, "standard_resale": 53.691}, "518604": {"markup_pct": 15.9, "standard_resale": 95.247}, "Purell777202": {"markup_pct": 10.9, "standard_resale": 56.293}, "spar3305": {"markup_pct": 7.7, "standard_resale": 67.291}, "P100B16150SOM": {"markup_pct": 10.0, "standard_resale": 30.03}, "Pi1616": {"markup_pct": 7.7, "standard_resale": 47.388}, "PG8941": {"markup_pct": 18.9, "standard_resale": 66.025}, "Supplies-A": {"markup_pct": 14.8, "standard_resale": 28.689}}, "item_prices": {"101293": 44.65, "11020602": 50.37, "1305-03": 74.6, "147guards": 73.42, "151 t": 54.4, "1890": 44.4, "190402": 84.79, "1905-02": 80.85, "19371": 78.98, "19375": 66.53, "1960": 45.74, "1liqdial": 39.95, "20885": 26.77, "248": 33.8, "260sanbag": 28.07, "290089": 48.81, "2wds10mg": 24.83, "37301wipes": 87.16, "37490": 49.83, "4007": 73.58, "401311": 42.19, "401313": 40.13, "4460": 73.56, "47035": 59.94, "47046": 96.36, "500tt": 41.75, "5185-04": 79.5, "518604": 82.18, "519204": 122.89, "52060": 7.66, "539202": 83.81, "61990": 61.75, "65992": 3.5, "7006kc": 75.29, "750386": 80.19, "7713": 74.09, "777202": 53.1, "782": 23.09, "79504": 24.96, "89420": 64.16, "89460": 77.39, "8Brasso": 34.1, "91552": 54.95, "9757": 17.89, "Batteries": 28.59, "Blank": 13.98, "CBattery": 23.65, "CFold": 19.5, "DBattery": 18.76, "Downy64": 27.66, "ESD856504": 94.48, "Ec3037n10": 18.5, "GlBleach": 3.31, "Gojo776302": 69.78, "H1863": 34.76, "KIMB07410": 96.84, "KL-850088": 37.68, "Kl-851531": 40.66, "Kling32": 29.82, "L00019": 5.19, "L00087": 26.03, "L01211": 2.53, "MB540A": 24.33, "Max58": 20.95, "Mccab": 46.2, "Mk520a": 28.92, "NP5207": 32.47, "Oc20steelo": 205.72, "Oc89410": 57.13, "Oco9603": 1.94, "P100B16150SOM": 27.3, "PG8941": 55.53, "Pg71693": 90.14, "Pi1616": 40.51, "Pinesol28": 40.15, "Purell772001": 0.02, "Purell775302": 70.05, "Purell777202": 50.76, "R2424n6": 11.5, "R3037k10": 23.95, "R4048K16": 24.95, "R4048n16": 24.95, "R4348k22": 28.47, "Scld": 38.63, "Shield": 55.44, "Snogopail": 26.2, "Soap Dispenser": 35.97, "Stamps": 15.6, "Supplies": 206.58, "Supplies-A": 38.27, "TM1616S": 44.0, "TMSTCLN": 84.06, "Tidelq64": 53.04, "Trashcan": 186.13, "VBJT2100": 32.31, "VBkT370": 28.12, "Vbcp2609": 30.04, "Vu5": 90.6, "Water": 8.38, "bmp46rl": 24.05, "calbag50": 23.17, "etto49036": 26.76, "fg4012551": 94.88, "fpro6100710": 29.44, "frs121400b0": 60.53, "gloves": 7.99, "gojo194102": 55.15, "hys0820211": 54.17, "k021335": 21.94, "k023100": 31.68, "kimb25703": 99.17, "kl709955": 18.82, "np12750": 45.21, "np6800ew": 30.61, "np6800yw": 47.99, "np962u": 49.37, "pallq25": 4.69, "pc07xhbk": 29.48, "pm9000": 84.12, "r3340n16": 18.95, "spar3305": 62.48, "tech750112": 121.04, "vblh303690c": 19.1, "vblh3858125b": 23.68, "vbmf91k": 22.8, "vbmf95w": 29.65, "vbrt800k": 22.0, "whterry25": 1.0, "gojo130503": 83.02, "Gojo130403": 96.21, "Cm7503": 85.76, "901-24401670": 277.99, "750517": 62.61, "Asphalt": 22.97, "wate320141tm03b": 34.52, "Purell773401": 15.86, "ux9ws": 65.86, "sss05204": 55.63, "po0004": 53.57, "91592": 50.38, "5031": 45.47, "B-822": 39.99, "vbclhp12d": 73.12, "64v3000pflb": 25.0, "pj0056": 35.47, "vbttdsjtb": 28.44, "Tcpp": 54.99, "Tube Lights": 10.98, "oco9602": 1.48, "Hysohh10091": 50.53, "cl38504": 7.28, "kimb09506": 6.5, "ec4048k16": 24.95, "Misc. Keys": 31.25, "Misc. Bathroom Supplies": 29.98, "uscd": 15.21, "soup": 27.86, "Nabc": 2.26, "K020919": 22.04, "90135b": 3.72, "Glasspro": 1.78, "gloves1": 8.98, "Denepk": 18.29, "Clor01593": 2.91, "fork": 9.89, "Big-Brut": 8.61, "Dollar Store": 3.0, "60254": 1.99, "2040": 3.73, "Ajax": 1.39, "Axitaero": 4.32, "Yellowjaw": 10.56, "64v3000pfmb": 2.5, "fpro6101033": 11.91, "64v3000pfxl": 4.25, "dm365": 7.55, "DM245": 5.24, "sn524": 3.71, "SNStk": 8.33, "300504": 11.98, "6173rma": 217.92, "pltoybrm": 3.99, "2642rm": 44.17, "Oc350ex": 6.03, "b452": 11.88, "7744c": 71.08, "32112": 3.55, "vb19rbfp": 2.7, "FG748000yel": 108.01, "CB006016": 6.11, "Ut202y": 0.92, "Vgpfm": 3.61, "L01254": 2.03, "8672wiper": 5.49, "Break1": 21.35, "Fantastik32": 35.54, "1050cart": 208.99, "4DM": 8.69, "fpro6100608": 16.9, "f00084": 6.79, "Magnet": 7.52, "Eurbelt": 0.71, "np5203l": 54.81, "spar4716": 99.48, "1200 Keys": 7.9, "04716": 99.48, "15020lemon": 38.96, "sp15d": 1523.34, "Melvin": 3.86, "Sc684": 197.08, "bestbet32": 42.25, "04329": 70.31, "94240626": 78.15, "20blpad": 6.05, "90135g": 5.65, "53270": 31.46, "k01010": 4.75, "cj0002": 20.33, "toybrms": 4.53, "Sn536": 5.91, "1820583pk": 22.34, "6310rm": 1.61, "ocnn900": 48.96, "k0093": 4.19, "clox35600": 6.33, "1820582pk": 22.14, "6102140": 12.65, "19blpad": 5.97, "mh9204": 42.85, "spar4820": 141.8, "2034": 10.87, "kimb13964": 77.47, "ck2020": 92.06, "Bvan14": 4.59, "k026220": 6.14, "CP824vb": 4.19, "kras643041": 61.63, "F00015": 2.62, "Ck1506": 153.04, "K011364": 5.13, "ck2000": 108.27, "ck1101": 89.69, "101446": 24.99, "NP6800EN": 22.82, "gvp9-md-hh": 3.31, "l01232": 51.35, "Atrix Vacbp1-ERGO": 169.99, "90120": 7.08, "1304": 479.06, "mrl2lg5gr": 10.53, "92022030": 0.01, "32Trigger": 1.16, "Bottle32": 0.84, "32sse": 3.48, "spar3040rtu": 2.9, "POWE13825": 11.06, "k00093": 4.19, "Crfbld": 11.8, "Tank": 84.65, "vbkt385": 31.97, "6109rm": 13.69, "etto4286": 4.81, "Scott Dispenser": 26.99, "Vac7": 7.45, "Q011185": 1.59, "54104a1": 23.73, "sbelt": 1.25, "111208E": 13.08, "107308": 460.54, "Grdust1": 29.16, "L00003": 44.73, "MB550a": 34.19, "550074": 51.45, "CP639": 4.75, "Soft13": 38.61, "Nor-5110": 2.03, "k01028": 9.06, "sc-35600": 75.4, "930612": 1.81, "solu1203": 5.92, "VB74mss": 20.0, "oc2646": 171.81, "oc2649": 32.94, "4444gy": 57.14, "clox35306": 49.72, "Cd2101": 38.41, "sa0110": 8.23, "Vgpfl": 3.79, "Fantastik32-Single": 4.44, "6102261": 40.2, "6102258": 49.98, "gojo518603": 50.44, "53925": 81.19, "vn1500a": 1325.71, "bsteel12": 5.48, "80374798": 36.77, "Pink Liners-": 45.09, "FG9S1600yel": 27.94, "Bissell": 32.98, "butc4512767": 21.61, "CK1560": 60.97, "Ocwiwax1": 25.83, "centblue": 22.26, "18winsq": 27.7, "etto1324": 27.7, "18strip": 31.12, "k020575": 38.8, "f00125": 4.2, "K012360": 2.39, "Atl-276": 39.87, "107314": 14.66, "101292": 7.73, "vac14": 9.06, "k031034": 1.0, "520plung": 8.86, "ut202l": 0.83, "Spar4806": 51.86, "19378": 63.49, "uni": 10.99, "Uniform/coat": 54.98, "unip": 22.99, "polo": 23.98, "Tool Box": 14.97, "107410362": 410.18, "7320s": 41.68, "4803": 11.11, "42718": 57.38, "vblh404610b": 16.24, "v55va": 1306.67, "B212": 48.28, "Purell778502": 58.3, "KL-709954": 42.93, "fpro6100300": 70.85, "Grabber Tool": 15.28, "Bgum12": 3.45, "Ce7010": 57.37, "5012420A": 7.11, "vn2015": 910.56, "c105": 146.5, "fpro6100081": 62.35, "clarke18wd": 835.23, "windshear": 234.05, "amccl841": 9.65, "Power Washer": 839.0, "101110054": 30.0, "Brown Out": 27.5, "Im-gvp9-lg-hh": 2.86, "3506": 56.99, "spar4830": 54.88, "Pc0103": 23.26, "Atl-800": 26.08, "Gtcucsha04": 44.87, "pkoocond": 65.65, "107413586": 8.85, "743M": 46.83, "19 Bonnet": 19.8, "EURE12988": 4.75, "Eurbrush": 4.22, "Vac27": 8.04, "Mdltgv": 10.36, "tolc280100": 1.61, "01400aat": 1154.12, "vu500a": 493.75, "fpro6100299": 120.04, "fg461600bla": 665.2, "401811": 79.22, "Shelf Rack": 29.99, "Oc107310": 482.48, "Vn1715": 851.6, "stradowsnow": 23.13, "sc679k": 188.47, "vnbm": 42.82, "Vgpfxl": 3.61, "al9001": 27.87, "ec24": 10.99, "43172": 10.67, "Latching Box": 10.98, "unif": 10.49, "EQUIPMENT REPAIR": 3.96, "Aramark": 1498.2, "97000": 39.24, "Razblscrx": 2.1, "g00043": 36.09, "spar4835": 60.58, "kimb91556": 55.33, "64v3000pfs": 4.29, "R4348n22": 35.07, "F001440": 17.57, "25cord": 12.66, "Gojo334206": 5.13, "7223": 81.91, "kimb07006": 54.04, "clo01100": 29.6, "NPCT02": 59.32, "Vacuum Bag": 25.59, "TUWASN365": 3.82, "cfseal5": 38.18}};
 
-document.addEventListener('click', function(e) {
-  if (e.target.dataset && e.target.dataset.tab === 'winteam') {
-    setTimeout(function() {
-      const today = new Date().toISOString().split('T')[0];
-      const firstOfMonth = new Date();
-      firstOfMonth.setDate(1);
-      const fom = firstOfMonth.toISOString().split('T')[0];
-      if (!document.getElementById('wtRecFrom').value) document.getElementById('wtRecFrom').value = fom;
-      if (!document.getElementById('wtRecTo').value) document.getElementById('wtRecTo').value = today;
-      if (!document.getElementById('wtUsageFrom').value) document.getElementById('wtUsageFrom').value = fom;
-      if (!document.getElementById('wtUsageTo').value) document.getElementById('wtUsageTo').value = today;
-    }, 100);
-  }
-});
+// WinTeam tab initialization is handled in switchTab()
 
 function getResalePrice(jobNumber, itemNumber, costPrice) {
   // First check RESALE_PRICING from Mary's uploaded pricing file
