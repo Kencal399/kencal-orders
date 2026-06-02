@@ -636,6 +636,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       </select>
       <button class="btn btn-outline btn-sm" onclick="switchTab('history')"> View History</button>
       <button class="btn btn-danger btn-sm" onclick="archiveSentOrders()"> Archive Sent</button>
+      <button class="btn btn-green btn-sm" onclick="exportProductsCSVForMary()">⬇ Export Products</button>
     </div>
 
     <div id="maryOrdersList"></div>
@@ -2871,6 +2872,52 @@ function showMasterProductList() {
   window._masterProductData = master;
   renderMasterProducts(master);
   document.getElementById('masterProductModal').style.display = 'block';
+}
+
+async function exportProductsCSVForMary() {
+  showLoading('Loading all products...');
+  try {
+    const master = {};
+    Object.entries(locationProducts).forEach(([job, products]) => {
+      const locName = LOCATION_NAMES[job] || job;
+      Object.entries(products).forEach(([id, info]) => {
+        if (!master[id]) master[id] = { desc: info.desc, unit: info.unit, locations: [] };
+        master[id].locations.push(locName);
+      });
+    });
+
+    if (Object.keys(master).length === 0) {
+      hideLoading();
+      alert('No product data available. Please wait for the page to finish loading and try again.');
+      return;
+    }
+
+    const rows = [['Item Number', 'Description', 'Unit', 'Location Count', 'Locations']];
+    Object.entries(master)
+      .sort((a, b) => a[1].desc.localeCompare(b[1].desc))
+      .forEach(([id, info]) => {
+        const locsSorted = [...info.locations].sort();
+        rows.push([id, info.desc, info.unit, locsSorted.length, locsSorted.join(' | ')]);
+      });
+
+    const csv = rows.map(r => r.map(cell => {
+      const s = String(cell == null ? '' : cell);
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Kencal_All_Products_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Export failed: ' + e.message);
+  } finally {
+    hideLoading();
+  }
 }
 
 function exportAllProductsCSV() {
