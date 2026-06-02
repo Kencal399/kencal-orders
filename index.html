@@ -589,6 +589,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <tbody id="supReviewBody"></tbody>
         </table>
         <div class="divider"></div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px"> Notes for Mary (optional)</label>
+          <textarea id="supOrderNotes" placeholder="e.g. Please deliver Tuesday, short on paper towels, urgent items marked..." style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:8px;font-size:13px;resize:vertical;min-height:72px;box-sizing:border-box;font-family:inherit"></textarea>
+        </div>
         <div class="flex-gap mt-8">
           <button class="btn btn-outline" onclick="backToOrder()"><- Edit Order</button>
           <button class="btn btn-green" onclick="submitOrder()">OK Submit Order</button>
@@ -975,7 +979,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div style="font-size:16px;font-weight:700;color:var(--navy)">📋 Master Product List</div>
-          <button class="btn btn-outline btn-sm" onclick="document.getElementById('masterProductModal').style.display='none'">Close</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-green btn-sm" onclick="exportAllProductsCSV()">⬇ Export CSV</button>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('masterProductModal').style.display='none'">Close</button>
+          </div>
         </div>
         <input type="text" id="masterProdSearch" placeholder="Search by item # or description..." oninput="filterMasterProducts()" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;margin-bottom:12px">
         <div style="font-size:12px;color:#888;margin-bottom:8px" id="masterProdCount"></div>
@@ -1832,6 +1839,7 @@ async function submitOrder() {
       status: 'pending',
       is_dropship: isDS,
       item_count: itemCount,
+      notes: (document.getElementById('supOrderNotes').value || '').trim(),
       created_at: new Date().toISOString()
     };
 
@@ -1847,6 +1855,7 @@ async function submitOrder() {
     document.getElementById('supReviewArea').classList.add('hidden');
     document.getElementById('supConfirmArea').classList.remove('hidden');
     supQtys = {};
+    document.getElementById('supOrderNotes').value = '';
   } catch(e) {
     alert('Error submitting order: ' + e.message + '\n\nPlease make sure the database tables are set up. See setup instructions.');
     console.error(e);
@@ -2143,6 +2152,7 @@ function renderOrderCard(order, view) {
             ${statusBadge} ${dsBadge}
           </div>
           <div class="order-meta">Supervisor: ${order.supervisor} &nbsp;&nbsp; ${itemCount} items &nbsp;&nbsp; ${dateStr} &nbsp;&nbsp; Ref: ${order.order_ref}</div>
+          ${order.notes ? `<div style="margin-top:5px;font-size:12px;color:#7a5a00;background:#fffbea;border:1px solid #f0d060;border-radius:5px;padding:4px 8px;display:inline-block"> <strong>Note:</strong> ${order.notes}</div>` : ''}
         </div>
         <span style="color:var(--gray);font-size:18px"></span>
       </div>
@@ -2861,6 +2871,43 @@ function showMasterProductList() {
   window._masterProductData = master;
   renderMasterProducts(master);
   document.getElementById('masterProductModal').style.display = 'block';
+}
+
+function exportAllProductsCSV() {
+  const master = window._masterProductData;
+  if (!master || Object.keys(master).length === 0) {
+    alert('No product data loaded. Open the Master Product List first.');
+    return;
+  }
+
+  const rows = [['Item Number', 'Description', 'Unit', 'Location Count', 'Locations']];
+  Object.entries(master)
+    .sort((a, b) => a[1].desc.localeCompare(b[1].desc))
+    .forEach(([id, info]) => {
+      const locsSorted = [...info.locations].sort();
+      rows.push([
+        id,
+        info.desc,
+        info.unit,
+        locsSorted.length,
+        locsSorted.join(' | ')
+      ]);
+    });
+
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell == null ? '' : cell);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  }).join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Kencal_All_Products_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function renderMasterProducts(data) {
