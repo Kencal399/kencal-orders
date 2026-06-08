@@ -585,7 +585,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div class="card-title"> Review Your Order</div>
         <div id="supReviewInfo" class="alert alert-info mb-8"></div>
         <table class="review-table">
-          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th></tr></thead>
+          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Unit</th></tr></thead>
           <tbody id="supReviewBody"></tbody>
         </table>
         <div class="divider"></div>
@@ -1162,6 +1162,12 @@ const IMPERIAL_JOB_MAP = {
   "50350":  {"standard":"1754003","rebill":"1754300"},  // Perkin Elmer, 710 Bridgeport Ave
   "50675":  {"standard":"1754011","rebill":"1754110"},  // 1 Fawcett Place, Greenwich
   "50900":  {"standard":"1754013","rebill":"1754310"},  // 75 Holly Hill Lane
+  "50909":  {"standard":"1754013","rebill":"1754310"},  // Stamford Health
+  "50921":  {"standard":"1754013","rebill":"1754310"},  // Family Centers
+  "22119":  {"standard":"1754012","rebill":"1754120"},  // Wilson Elser
+  "22136":  {"standard":"1754012","rebill":"1754120"},  // Hudson River Imaging
+  "22154":  {"standard":"1754014","rebill":"1754410"},  // Cosmetic Surgery
+  "22155":  {"standard":"1754014","rebill":"1754410"},  // Plastic Surgery
   "50913":  {"standard":"1754013","rebill":"1754310"},  // Greenwich Hospital - 75 Holly Hill
   "51150":  {"standard":"1754018","rebill":"1754180"},  // 1 Dock Street, Stamford
   "51200":  {"standard":"1754019","rebill":"1754190"},  // 1 Sound Shore Drive, Greenwich
@@ -1767,20 +1773,42 @@ function buildCatalogForm(containerId, qtyObj, job) {
       inp.dataset.unit = item.unit;
       inp.dataset.type = item.type || 'Other';
 
+      var equipWords = ['vacuum','vac ','broom','mop ','bucket','cart','dispenser',
+        'uniform','machine','equipment','battery','batteries','squeegee','dustpan',
+        'shelf rack','latching','tool','magnet','belt','snow','shovel',
+        'cord ','brush','duster','polo','jacket','coat','pail','trash can','caddy'];
+      var descLow = (item.desc||'').toLowerCase();
+      var isEquip = equipWords.some(function(w){ return descLow.indexOf(w.trim())!==-1; });
+      var unitToggle = null;
+      if (!isEquip) {
+        unitToggle = document.createElement('select');
+        unitToggle.style.cssText = 'padding:4px 6px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px;margin-left:6px;cursor:pointer';
+        unitToggle.innerHTML = '<option value="Case">Case</option><option value="Each">Each</option>';
+        if (qtyObj[item.id]) unitToggle.value = qtyObj[item.id].unitType || 'Case';
+      }
+
       if (qtyObj[item.id]) inp.value = qtyObj[item.id].qty;
 
       inp.addEventListener('input', function() {
         const q = parseFloat(this.value) || 0;
+        var uType = unitToggle ? unitToggle.value : 'Case';
         if (q > 0) {
-          qtyObj[item.id] = {qty: q, name: item.desc, unit: item.unit, type: item.type || 'Other'};
+          qtyObj[item.id] = {qty: q, name: item.desc, unit: item.unit, type: item.type || 'Other', unitType: uType};
         } else {
           delete qtyObj[item.id];
         }
         updateItemCount();
       });
 
+      if (unitToggle) {
+        unitToggle.addEventListener('change', function() {
+          if (qtyObj[item.id]) qtyObj[item.id].unitType = this.value;
+        });
+      }
+
       row.appendChild(info);
       row.appendChild(inp);
+      if (unitToggle) row.appendChild(unitToggle);
       sec.appendChild(row);
     });
     form.appendChild(sec);
@@ -1807,7 +1835,7 @@ function reviewOrder() {
 
   Object.entries(supQtys).sort((a,b) => a[1].type.localeCompare(b[1].type)).forEach(([id, item]) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${id}</td><td>${item.name}</td><td><input type="number" class="qty-edit" value="${item.qty}" min="0.5" step="0.5" onchange="supQtys['${id}'].qty = parseFloat(this.value)||0"></td><td>${item.unit}</td>`;
+    tr.innerHTML = `<td>${id}</td><td>${item.name}</td><td><input type="number" class="qty-edit" value="${item.qty}" min="0.5" step="0.5" onchange="supQtys['${id}'].qty = parseFloat(this.value)||0"></td><td>${item.unitType||'Case'}</td><td>${item.unit}</td>`;
     tbody.appendChild(tr);
   });
 
@@ -2100,16 +2128,27 @@ function renderOrderCard(order, view) {
 
   const hasRebill = IMPERIAL_JOB_MAP[order.job_number] && IMPERIAL_JOB_MAP[order.job_number].rebill;
 
-  const itemRows = Object.entries(items).map(([id, item]) =>
-    `<tr>
+  const itemRows = Object.entries(items).map(([id, item]) => {
+    const isRebillItem = item.rebill !== undefined ? item.rebill : (order.rebill || false);
+    const rebillToggle = isSent
+      ? (isRebillItem ? '<span style="color:#c07000;font-size:11px">Rebill</span>' : '<span style="color:#555;font-size:11px">Standard</span>')
+      : `<select style="padding:3px 5px;border:1.5px solid var(--gray-light);border-radius:4px;font-size:11px"
+          onchange="updateItemRebill('${order.id}','${id}',this.value==='rebill')">
+          <option value="standard" ${!isRebillItem?'selected':''}>Standard</option>
+          <option value="rebill" ${isRebillItem?'selected':''}>Rebill</option></select>`;
+    const editBtn = isSent ? '' : `<button class='btn btn-danger btn-xs' onclick="removeOrderItem('${order.id}','${id}')">X</button>`;
+    return `<tr>
       <td>${id}</td>
       <td>${item.name}</td>
-      <td><input type="number" value="${item.qty}" min="0.5" step="0.5" style="width:65px;padding:4px 6px;border:1.5px solid var(--gray-light);border-radius:4px;font-size:13px" 
-        onchange="updateOrderItem('${order.id}','${id}',this.value)"></td>
+      <td><input type="number" value="${item.qty}" min="0.5" step="0.5"
+        style="width:65px;padding:4px 6px;border:1.5px solid var(--gray-light);border-radius:4px;font-size:13px"
+        ${isSent?'disabled':''} onchange="updateOrderItem('${order.id}','${id}',this.value)"></td>
+      <td>${item.unitType||'Case'}</td>
       <td>${item.unit}</td>
-      <td><button class="btn btn-danger btn-xs" onclick="removeOrderItem('${order.id}','${id}')">X</button></td>
-    </tr>`
-  ).join('');
+      <td>${rebillToggle}</td>
+      <td>${editBtn}</td>
+    </tr>`;
+  }).join('');
 
   const deliveryDate = order.delivery_date ? order.delivery_date : '';
   const rebillChecked = order.rebill ? 'checked' : '';
@@ -2117,8 +2156,14 @@ function renderOrderCard(order, view) {
   let maryControls = '';
   if (view === 'mary') {
     if (isSent) {
-      maryControls = '<div class="alert alert-info mb-8" style="font-size:12px">This order has been sent to Imperial and is locked.</div>';
+      maryControls = '<div class="alert alert-info mb-8" style="font-size:12px">This order has been sent to Imperial and is locked.</div>'
+        + '<button class="btn btn-outline btn-sm" style="margin-bottom:8px" onclick="printOrderCard(' + order.id + ')"> Print</button>';
     } else {
+      const poField = '<div style="margin:8px 0;display:flex;align-items:center;gap:8px">'
+        + '<label style="font-size:12px;font-weight:600;min-width:28px">PO:</label>'
+        + '<input type="text" value="' + (order.po_number||'') + '" placeholder="Optional PO number"'
+        + ' style="flex:1;padding:5px 8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px"'
+        + ' onchange="updateOrderPO(' + order.id + ', this.value)"></div>';
       let rebillHtml = '';
       if (hasRebill) {
         const rebillAcct = (IMPERIAL_JOB_MAP[order.job_number] && IMPERIAL_JOB_MAP[order.job_number].rebill) || 'N/A';
@@ -2133,12 +2178,15 @@ function renderOrderCard(order, view) {
       const approveBtn = order.status === 'reviewed' ?
         '<button class="btn btn-green btn-sm" onclick="updateOrderStatus(' + order.id + ',\'approved\')">Approve for Imperial</button>' : '';
       maryControls =
+        poField +
         '<div class="delivery-date-row">' +
         '<label>Delivery Date:</label>' +
         '<input type="date" value="' + deliveryDate + '" onchange="updateDeliveryDate(' + order.id + ', this.value)" min="' + new Date().toISOString().split('T')[0] + '">' +
         '</div>' +
         rebillHtml +
         '<div class="flex-gap mt-8">' + reviewedBtn + approveBtn +
+        '<button class="btn btn-outline btn-sm" onclick="printOrderCard(' + order.id + ')"> Print</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="showAddItemPanel(' + order.id + ')">+ Add Item</button>' +
         '<button class="btn btn-danger btn-xs" onclick="deleteOrder(' + order.id + ')">Delete</button>' +
         '</div>';
     }
@@ -2183,6 +2231,23 @@ async function updateDeliveryDate(id, date) {
   await sb.update('kencal_orders', {delivery_date: date, updated_at: new Date().toISOString()}, {id});
   const order = maryOrders.find(o => String(o.id) === String(id));
   if (order) order.delivery_date = date;
+}
+
+async function updateItemRebill(orderId, itemId, isRebill) {
+  try {
+    const order = (window._maryOrders||[]).find(o=>o.id===orderId);
+    if (!order || !order.items || !order.items[itemId]) return;
+    order.items[itemId].rebill = isRebill;
+    await sb.update('kencal_orders', { items: order.items }, `id=eq.${orderId}`);
+  } catch(e) { console.error('Item rebill update failed:', e); }
+}
+
+async function updateOrderPO(orderId, poValue) {
+  try {
+    await sb.update('kencal_orders', { po_number: poValue }, `id=eq.${orderId}`);
+    const order = (window._maryOrders||[]).find(o=>o.id===orderId);
+    if (order) order.po_number = poValue;
+  } catch(e) { console.error('PO update failed:', e); }
 }
 
 async function toggleRebill(id, checked) {
@@ -2541,13 +2606,14 @@ function toggleRebillOverride(key, job, isDropship) {
 function exportImperialCSV() {
   const orders = (window._imperialOrders || []).filter(o => selectedOrdersForExport.has(o.id));
   const overrides = window._imperialRebillOverrides || {};
-  const rows = [['Account Number','Ship To Account','Item Number','Description','Order Quantity','Unit of Measure','Requested Delivery Date','Rebill']];
+  const rows = [['Account Number','Ship To Account','Item Number','Description','Order Quantity','Unit of Measure','Requested Delivery Date','Rebill','PO Number','Each or Case']];
 
   orders.forEach(order => {
     const delivDate = order.delivery_date || '';
     Object.entries(order.items || {}).forEach(([id, item]) => {
       const overrideKey = `${order.id}_${id}`;
-      const isRebill = overrideKey in overrides ? overrides[overrideKey] : order.rebill;
+      const isRebill = item.rebill !== undefined ? item.rebill
+        : (overrideKey in overrides ? overrides[overrideKey] : order.rebill);
       let acct;
       if (order.is_dropship) {
         const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
@@ -2559,7 +2625,7 @@ function exportImperialCSV() {
       } else {
         acct = isRebill ? '1754200' : '1754002';
       }
-      rows.push(['131449', acct, id, item.name, item.qty, item.unit, delivDate, isRebill ? 'Yes' : 'No']);
+      rows.push(['131449', acct, id, item.name, item.qty, item.unit, delivDate, isRebill ? 'Yes' : 'No', order.po_number||'', item.unitType||'Case']);
     });
   });
 
@@ -2872,6 +2938,102 @@ function showMasterProductList() {
   window._masterProductData = master;
   renderMasterProducts(master);
   document.getElementById('masterProductModal').style.display = 'block';
+}
+
+function printOrderCard(orderId) {
+  const order = (window._maryOrders || []).find(o => o.id === orderId);
+  if (!order) { alert('Order not found.'); return; }
+  const items = order.items || {};
+  const dateStr = new Date(order.created_at).toLocaleDateString('en-US',
+    {month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  let trows = '';
+  Object.entries(items).forEach(function(e) {
+    const id = e[0], item = e[1];
+    trows += '<tr>'
+      + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + id + '</td>'
+      + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.name + '</td>'
+      + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">' + item.qty + '</td>'
+      + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.unitType||'Case') + '</td>'
+      + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.unit||'') + '</td>'
+      + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.rebill?'Rebill':'Standard') + '</td>'
+      + '</tr>';
+  });
+  const css = 'body{font-family:Arial,sans-serif;padding:32px;color:#222;max-width:760px;margin:0 auto}'
+    + 'h2{margin:0 0 4px;color:#1a2e4a}table{width:100%;border-collapse:collapse;margin-top:20px}'
+    + 'th{background:#1a2e4a;color:white;padding:8px 10px;text-align:left;font-size:13px}'
+    + 'td{font-size:13px}.meta{font-size:13px;color:#555;margin-bottom:3px}'
+    + '.note{background:#fffbea;border:1px solid #f0d060;padding:8px 12px;border-radius:6px;margin-top:10px;font-size:13px}'
+    + '.po{font-size:13px;font-weight:700;margin-top:6px;color:#1a2e4a}'
+    + '.divider{border-top:2px solid #1a2e4a;margin:14px 0}@media print{button{display:none}}';
+  const html = '<!DOCTYPE html><html><head><title>Order ' + order.order_ref + '</title>'
+    + '<style>' + css + '</style></head><body>'
+    + '<h2>' + order.location_name + '</h2>'
+    + '<div class="meta">Supervisor: <strong>' + order.supervisor + '</strong></div>'
+    + '<div class="meta">Date: ' + dateStr + '</div>'
+    + '<div class="meta">Ref: ' + order.order_ref + ' | Status: ' + order.status + '</div>'
+    + (order.po_number ? '<div class="po">PO: ' + order.po_number + '</div>' : '')
+    + (order.notes ? '<div class="note">Notes: ' + order.notes + '</div>' : '')
+    + '<div class="divider"></div>'
+    + '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Unit</th><th>Rebill</th></tr></thead>'
+    + '<tbody>' + trows + '</tbody></table>'
+    + '<scr'+'ipt>window.onload=function(){window.print();}</scr'+'ipt></body></html>';
+  const w = window.open('','_blank','width=820,height=950');
+  w.document.write(html);
+  w.document.close();
+}
+
+function showAddItemPanel(orderId) {
+  const order = (window._maryOrders||[]).find(o=>o.id==orderId);
+  if (!order) return;
+  const products = locationProducts[order.job_number] || {};
+  let opts = '<option value="">-- Select item --</option>';
+  Object.entries(products).sort((a,b)=>a[1].desc.localeCompare(b[1].desc)).forEach(function(e){
+    const id=e[0], info=e[1];
+    opts += '<option value="'+id+'" data-name="'+(info.desc||'')+'" data-unit="'+(info.unit||'')+'">'+(info.desc||id)+' ('+id+')</option>';
+  });
+  var ex = document.getElementById('addItemModal_'+orderId); if(ex) ex.remove();
+  var modal = document.createElement('div');
+  modal.id = 'addItemModal_'+orderId;
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = '<div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">'
+    + '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:16px">Add Item to Order</div>'
+    + '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Item</label>'
+    + '<select id="addItemSelect_'+orderId+'" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">'+opts+'</select></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
+    + '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Quantity</label>'
+    + '<input type="number" id="addItemQty_'+orderId+'" min="0.5" step="0.5" placeholder="0" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box"></div>'
+    + '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Each or Case</label>'
+    + '<select id="addItemUnit_'+orderId+'" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"><option value="Case">Case</option><option value="Each">Each</option></select></div></div>'
+    + '<div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Rebill?</label>'
+    + '<select id="addItemRebill_'+orderId+'" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"><option value="standard">Standard</option><option value="rebill">Rebill</option></select></div>'
+    + '<div style="display:flex;gap:8px">'
+    + '<button class="btn btn-green" onclick="confirmAddItem('+orderId+')" style="flex:1">Add Item</button>'
+    + '<button class="btn btn-outline" onclick="(function(){var m=document.getElementById(\'addItemModal_\'+orderId);if(m)m.remove();})()" style="flex:1">Cancel</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+}
+
+async function confirmAddItem(orderId) {
+  const order = (window._maryOrders||[]).find(o=>o.id==orderId);
+  if (!order) return;
+  const sel = document.getElementById('addItemSelect_'+orderId);
+  const itemId = sel ? sel.value : "";
+  const opt = sel ? sel.options[sel.selectedIndex] : null;
+  const itemName = opt ? (opt.dataset.name || itemId) : itemId;
+  const itemUnit = opt ? (opt.dataset.unit || "") : "";
+  const qty = parseFloat((document.getElementById('addItemQty_'+orderId)||{}).value) || 0;
+  const unitType = (document.getElementById('addItemUnit_'+orderId)||{value:'Case'}).value;
+  const isRebill = (document.getElementById('addItemRebill_'+orderId)||{value:'standard'}).value === 'rebill';
+  if (!itemId || qty <= 0) { alert("Please select an item and enter a quantity."); return; }
+  if (!order.items) order.items = {};
+  order.items[itemId] = { name: itemName, qty: qty, unit: itemUnit, unitType: unitType, rebill: isRebill };
+  try {
+    showLoading('Saving...');
+    await sb.update('kencal_orders', { items: order.items }, 'id=eq.'+orderId);
+    document.getElementById('addItemModal_'+orderId).remove();
+    loadMaryOrders();
+  } catch(e) { alert("Failed to add item: " + e.message); }
+  finally { hideLoading(); }
 }
 
 async function exportProductsCSVForMary() {
