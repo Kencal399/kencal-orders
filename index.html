@@ -975,7 +975,44 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <button class="btn btn-primary btn-sm mt-8" onclick="addProductToLocation()">+ Add Product</button>
     </div>
 
-    <!-- Master Product List Modal -->
+    <!-- Bulk Add Product to All Supervisor Locations -->
+    <div class="divider"></div>
+    <div class="card-title" style="font-size:13px"> Bulk Add Product to All Supervisor Locations</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="form-group">
+        <label>Supervisor</label>
+        <select id="bulkSupSelect" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          <option value="">-- Select supervisor --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Item # (must already exist in catalog)</label>
+        <input type="text" id="bulkItemId" placeholder="e.g. Purell775302">
+      </div>
+    </div>
+    <div id="bulkSupPreview" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+    <button class="btn btn-primary btn-sm" onclick="bulkAddProductToSupervisor()"> Add to All Locations</button>
+    <div id="bulkAddResult" style="margin-top:8px;font-size:12px"></div>
+
+    <!-- Bulk Remove Product from All Supervisor Locations -->
+    <div class="divider"></div>
+    <div class="card-title" style="font-size:13px"> Bulk Remove Product from All Supervisor Locations</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="form-group">
+        <label>Supervisor</label>
+        <select id="bulkRemoveSupSelect" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          <option value="">-- Select supervisor --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Item #</label>
+        <input type="text" id="bulkRemoveItemId" placeholder="e.g. Purell775302">
+      </div>
+    </div>
+    <div id="bulkRemovePreview" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+    <button class="btn btn-danger btn-sm" onclick="bulkRemoveProductFromSupervisor()"> Remove from All Locations</button>
+    <div id="bulkRemoveResult" style="margin-top:8px;font-size:12px"></div>
+
     <div id="masterProductModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
       <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -2656,6 +2693,7 @@ async function markOrdersSent() {
 function buildAdminPanel() {
   // Load pending location requests
   renderLocationRequests();
+  populateBulkSupSelect();
 
   // Supervisor list
   const tbody = document.getElementById('adminSupBody');
@@ -2870,6 +2908,117 @@ async function loadAdminProducts() {
     btnDiv.appendChild(removeBtn);
 
     container.appendChild(div);
+  });
+}
+
+async function bulkAddProductToSupervisor() {
+  const supName = document.getElementById('bulkSupSelect').value;
+  const itemId = document.getElementById('bulkItemId').value.trim();
+  const resultEl = document.getElementById('bulkAddResult');
+  if (!supName) { alert('Please select a supervisor.'); return; }
+  if (!itemId) { alert('Please enter an item number.'); return; }
+
+  const jobs = SUPERVISOR_LOCATIONS[supName] || [];
+  if (jobs.length === 0) { alert('No locations found for ' + supName); return; }
+
+  // Find item details from locationProducts (search all locations)
+  let itemDesc = '', itemUnit = 'Case', itemType = 'Supply';
+  for (const job of Object.keys(locationProducts)) {
+    const p = locationProducts[job];
+    if (p[itemId]) { itemDesc = p[itemId].desc; itemUnit = p[itemId].unit || 'Case'; itemType = p[itemId].type || 'Supply'; break; }
+  }
+  if (!itemDesc) {
+    alert('Item "' + itemId + '" not found in catalog. Make sure it exists in at least one location first.');
+    return;
+  }
+
+  showLoading('Adding to ' + jobs.length + ' locations...');
+  resultEl.innerHTML = '';
+  let added = 0, skipped = 0, failed = 0;
+
+  for (const job of jobs) {
+    // Skip if already exists
+    if (locationProducts[job] && locationProducts[job][itemId]) { skipped++; continue; }
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_products`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ job_number: job, item_number: itemId, item_description: itemDesc, unit: itemUnit, item_type: itemType, active: true })
+      });
+      if (r.ok) {
+        if (!locationProducts[job]) locationProducts[job] = {};
+        locationProducts[job][itemId] = { desc: itemDesc, unit: itemUnit, type: itemType };
+        added++;
+      } else { failed++; }
+    } catch(e) { failed++; }
+  }
+
+  hideLoading();
+  let msg = `Done: <strong>${added} added</strong>`;
+  if (skipped) msg += `, ${skipped} already existed (skipped)`;
+  if (failed) msg += `, <span style="color:red">${failed} failed</span>`;
+  resultEl.innerHTML = msg;
+  document.getElementById('bulkItemId').value = '';
+}
+
+async function bulkRemoveProductFromSupervisor() {
+  const supName = document.getElementById('bulkRemoveSupSelect').value;
+  const itemId = document.getElementById('bulkRemoveItemId').value.trim();
+  const resultEl = document.getElementById('bulkRemoveResult');
+  if (!supName) { alert('Please select a supervisor.'); return; }
+  if (!itemId) { alert('Please enter an item number.'); return; }
+
+  const jobs = SUPERVISOR_LOCATIONS[supName] || [];
+  if (jobs.length === 0) { alert('No locations found for ' + supName); return; }
+
+  const confirm = window.confirm(
+    'Remove "' + itemId + '" from all ' + jobs.length + ' locations for ' + supName + '?\n\nThis cannot be undone.'
+  );
+  if (!confirm) return;
+
+  showLoading('Removing from ' + jobs.length + ' locations...');
+  resultEl.innerHTML = '';
+  let removed = 0, skipped = 0, failed = 0;
+
+  for (const job of jobs) {
+    if (!locationProducts[job] || !locationProducts[job][itemId]) { skipped++; continue; }
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}&item_number=eq.${encodeURIComponent(itemId)}`,
+        { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (r.ok) {
+        delete locationProducts[job][itemId];
+        removed++;
+      } else { failed++; }
+    } catch(e) { failed++; }
+  }
+
+  hideLoading();
+  let msg = `Done: <strong>${removed} removed</strong>`;
+  if (skipped) msg += `, ${skipped} not found (skipped)`;
+  if (failed) msg += `, <span style="color:red">${failed} failed</span>`;
+  resultEl.innerHTML = msg;
+  document.getElementById('bulkRemoveItemId').value = '';
+}
+
+function populateBulkSupSelect() {
+  ['bulkSupSelect', 'bulkRemoveSupSelect'].forEach(function(selId) {
+    const sel = document.getElementById(selId);
+    if (!sel || sel.options.length > 1) return;
+    Object.keys(SUPERVISOR_LOCATIONS).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      const count = (SUPERVISOR_LOCATIONS[name]||[]).length;
+      opt.textContent = name + ' (' + count + ' locations)';
+      sel.appendChild(opt);
+    });
+    const previewId = selId === 'bulkSupSelect' ? 'bulkSupPreview' : 'bulkRemovePreview';
+    sel.addEventListener('change', function() {
+      const jobs = SUPERVISOR_LOCATIONS[this.value] || [];
+      const prev = document.getElementById(previewId);
+      if (prev) prev.textContent = jobs.length ? 'Locations: ' + jobs.map(j => LOCATION_NAMES[j]||j).join(', ') : '';
+    });
   });
 }
 
