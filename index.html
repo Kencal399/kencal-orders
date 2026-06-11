@@ -1558,7 +1558,7 @@ async function loadLocationsFromSupabase() {
 
 async function loadSupervisorsFromSupabase() {
   try {
-    const sups = await sbFetch('kencal_supervisors?select=name&active=eq.true&limit=100');
+    const sups = await sbFetch('kencal_supervisors?select=name&role=in.(supervisor,manager)&active=eq.true&order=name.asc&limit=100');
     const locs = await sbFetch('kencal_supervisor_locations?select=supervisor,job_number&active=eq.true&limit=5000');
     if (sups && sups.length > 0) {
       // Reset and rebuild from Supabase
