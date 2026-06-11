@@ -910,10 +910,15 @@ async function loadQCLocations(){
   list.innerHTML='<div class="loading"><div class="spinner"></div>Loading…</div>';
   buildQCTemplateGrid();
   try {
-    const locIds=await sbFetch(`kencal_supervisor_locations?supervisor_id=eq.${state.supervisor.id}&select=location_id`);
-    const ids=locIds.map(l=>l.location_id).join(',');
-    if(!ids){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
-    const locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,name,address&order=name`);
+    let locs;
+    if(state.supervisor.role==='admin'||state.supervisor.role==='manager'){
+      locs=await sbFetch('kencal_locations?active=eq.true&select=id,name,address&order=name');
+    } else {
+      const locIds=await sbFetch(`kencal_supervisor_locations?supervisor_id=eq.${state.supervisor.id}&select=location_id`);
+      const ids=locIds.map(l=>l.location_id).join(',');
+      if(!ids){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
+      locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,name,address&order=name`);
+    }
     list.innerHTML=locs.map(l=>`
       <div class="loc-row" onclick="selectQCLocation(${l.id},'${(l.name||'').replace(/'/g,"\\'")}','${(l.address||'').replace(/'/g,"\\'")}')">
         <div class="loc-icon">🏢</div>
