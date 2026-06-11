@@ -248,8 +248,10 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
     <div class="top-bar-title">QC Inspector</div>
     <div class="top-bar-logo">Kencal Pro</div>
   </div>
-  <div class="scroll-body">
-    <div class="field-label">Select location to inspect</div>
+  <div style="padding:10px 16px;background:var(--white);border-bottom:0.5px solid var(--border);position:sticky;top:50px;z-index:9;">
+    <input type="text" id="qc-search" placeholder="🔍  Search locations…" oninput="filterQCLocations(this.value)" style="background:#F4F5F7;border:none;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;">
+  </div>
+  <div class="scroll-body" style="padding-top:8px;">
     <div id="qc-loc-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
   </div>
 </div>
