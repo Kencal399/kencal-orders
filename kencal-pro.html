@@ -921,13 +921,28 @@ async function loadQCLocations(){
       if(!ids){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
       locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,display_name,job_number&order=display_name`);
     }
-    list.innerHTML=locs.map(l=>`
-      <div class="loc-row" onclick="selectQCLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${(l.job_number||'').replace(/'/g,"\\'")}')">
+        window._qcLocs = locs;
+    list.innerHTML=locs.map((l,i)=>`
+      <div class="loc-row" data-idx="${i}">
         <div class="loc-icon">🏢</div>
-        <div style="flex:1;"><div style="font-size:15px;font-weight:600;">${l.display_name}</div><div style="font-size:12px;color:var(--text2);">${l.job_number||'—'}</div></div>
+        <div style="flex:1;"><div style="font-size:15px;font-weight:600;">${l.display_name||'—'}</div><div style="font-size:12px;color:var(--text2);">${l.job_number||'—'}</div></div>
         <span style="font-size:20px;color:#ccc;">›</span>
       </div>`).join('');
+    document.getElementById('qc-loc-list').querySelectorAll('.loc-row').forEach(row=>{
+      row.addEventListener('click',()=>{
+        const loc=window._qcLocs[parseInt(row.dataset.idx)];
+        selectQCLocation(loc.id, loc.display_name||'', loc.job_number||'');
+      });
+    });
   } catch(e){list.innerHTML='<p style="color:var(--fail);font-size:13px;padding:16px;">Error loading locations.</p>';}
+}
+
+function filterQCLocations(query) {
+  const q = query.toLowerCase().trim();
+  const rows = document.querySelectorAll('#qc-loc-list .loc-row');
+  rows.forEach(row => {
+    row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
 }
 
 async function selectQCLocation(id,name,job_number){
