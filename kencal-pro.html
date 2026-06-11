@@ -108,6 +108,8 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
 .ci-btn.pass-active{background:var(--pass-bg);color:var(--pass);border-color:var(--pass);}
 .ci-btn.attn-active{background:var(--attn-bg);color:var(--attn);border-color:var(--attn);}
 .ci-btn.fail-active{background:var(--fail-bg);color:var(--fail);border-color:var(--fail);}
+.ci-btn.na-active{background:#EBEBEB;color:#555;border-color:#999;}
+.ci-btn.na-active{background:#EBEBEB;color:#555;border-color:#999;}
 .ci-note{display:none;margin-top:8px;}
 .ci-note.show{display:block;}
 .ci-note textarea{font-size:13px;resize:none;}
@@ -769,6 +771,7 @@ function loadQCRoom(idx) {
         <div class="ci-btn ${s.rating==='pass'?'pass-active':''}" id="qci-p-${i}" onclick="rateQC(${i},'pass')">✓ Pass</div>
         <div class="ci-btn ${s.rating==='attn'?'attn-active':''}" id="qci-a-${i}" onclick="rateQC(${i},'attn')">⚠ Attn</div>
         <div class="ci-btn ${s.rating==='fail'?'fail-active':''}" id="qci-f-${i}" onclick="rateQC(${i},'fail')">✕ Fail</div>
+        <div class="ci-btn ${s.rating==='na'?'na-active':''}" id="qci-n-${i}" onclick="rateQC(${i},'na')">— N/A</div>
       </div>
       <div class="ci-note ${(s.rating==='attn'||s.rating==='fail')?'show':''}" id="qci-note-${i}">
         <textarea rows="2" placeholder="Describe the issue…" oninput="saveQCNote(${i},this.value)">${s.note||''}</textarea>
@@ -792,8 +795,8 @@ function rateQC(i,level){
   if(!state.qcRoomData[room])state.qcRoomData[room]={};
   if(!state.qcRoomData[room][i])state.qcRoomData[room][i]={};
   state.qcRoomData[room][i].rating=level;
-  ['p','a','f'].forEach(l=>{const el=document.getElementById(`qci-${l}-${i}`);if(el)el.className='ci-btn';});
-  const map={pass:'p',attn:'a',fail:'f'};
+  ['p','a','f','n'].forEach(l=>{const el=document.getElementById(`qci-${l}-${i}`);if(el)el.className='ci-btn';});
+  const map={pass:'p',attn:'a',fail:'f',na:'n'};
   const el=document.getElementById(`qci-${map[level]}-${i}`);
   if(el)el.className=`ci-btn ${level}-active`;
   const noteEl=document.getElementById(`qci-note-${i}`);
@@ -806,7 +809,7 @@ function saveQCNote(i,val){const room=state.qcRooms[state.qcCurrentRoomIdx];if(!
 function updateQCLiveScore(){
   const room=state.qcRooms[state.qcCurrentRoomIdx];
   const data=state.qcRoomData[room]||{};
-  const rated=Object.keys(data).filter(k=>data[k].rating);
+  const rated=Object.keys(data).filter(k=>data[k].rating&&data[k].rating!=='na');
   if(!rated.length){document.getElementById('qc-live-score').textContent='—';return;}
   const w={pass:1,attn:0.5,fail:0};
   const pct=Math.round((rated.reduce((a,k)=>a+(w[data[k].rating]||0),0)/rated.length)*100);
@@ -815,14 +818,24 @@ function updateQCLiveScore(){
 
 function qcNextRoom(){if(state.qcCurrentRoomIdx<state.qcRooms.length-1){loadQCRoom(state.qcCurrentRoomIdx+1);}else{buildQCSummary();showScreen('s-qc-summary');}}
 function qcPrevRoom(){if(state.qcCurrentRoomIdx>0)loadQCRoom(state.qcCurrentRoomIdx-1);}
-function confirmLeave(){if(confirm('Leave inspection?')){buildQCSummary();showScreen('s-qc-summary');}}
+function confirmLeave(){
+  if(confirm('Save and exit? Your ratings will be saved as a draft.')){
+    saveQCDraft();
+    showScreen('s-home');
+  }
+}
+function saveQCDraft(){
+  // Progress is already in state - nothing to do for now
+  // Future: save draft to Supabase
+  toast('Draft saved');
+}
 
 function buildQCSummary(){
   const w={pass:1,attn:0.5,fail:0};
   let total=0,count=0,issues=0;
   const rows=state.qcRooms.map((room,idx)=>{
     const data=state.qcRoomData[room]||{};
-    const rated=Object.keys(data).filter(k=>data[k].rating);
+    const rated=Object.keys(data).filter(k=>data[k].rating&&data[k].rating!=='na');
     const score=rated.length?Math.round((rated.reduce((a,k)=>a+(w[data[k].rating]||0),0)/rated.length)*100):null;
     if(score!==null){total+=score;count++;}
     const fails=Object.values(data).filter(v=>v.rating==='fail'||v.rating==='attn').length;
@@ -860,7 +873,7 @@ async function submitQCInspection(){
     for(const room of state.qcRooms){
       const data=state.qcRoomData[room]||{};
       const items=getChecklistForRoom(room);
-      const rated=Object.keys(data).filter(k=>data[k].rating);
+      const rated=Object.keys(data).filter(k=>data[k].rating&&data[k].rating!=='na');
       const roomScore=rated.length?Math.round((rated.reduce((a,k)=>a+(w[data[k].rating]||0),0)/rated.length)*100):null;
       let roomId=null;
       if(state.qcInspectionId){
@@ -874,9 +887,62 @@ async function submitQCInspection(){
     }
     if(state.qcInspectionId)
       await fetch(SUPABASE_URL+`/rest/v1/kencal_inspections?id=eq.${state.qcInspectionId}`,{method:'PATCH',headers:HEADERS,body:JSON.stringify({overall_score:state._qcOverallScore,status:'pending_approval'})});
-    buildQCReport();showScreen('s-qc-report');
+    buildQCReport();
+    sendReportEmail();
+    showScreen('s-qc-report');
     toast('Submitted for approval ✓');
   } catch(e){toast('Error saving');btn.textContent='Generate report & submit';btn.disabled=false;}
+}
+
+function sendReportEmail(){
+  const sup = state.supervisor;
+  const loc = state.qcLocation;
+  const score = state._qcOverallScore;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const subject = encodeURIComponent(`Kencal QC Report — ${loc?.name||'Location'} — ${dateStr} — Score: ${score}`);
+  const body = encodeURIComponent(
+    `QC Inspection Report
+
+` +
+    `Location: ${loc?.name||'—'}
+` +
+    `Inspector: ${sup.name}
+` +
+    `Date: ${dateStr}
+` +
+    `Overall Score: ${score} / 100
+
+` +
+    buildEmailBody() +
+    `
+
+This report was submitted via Kencal Pro and is pending your approval before being sent to the client.
+
+Kencal Maintenance Corporation`
+  );
+  const mailto = `mailto:rstorey@kencalmaintenance.com?subject=${subject}&body=${body}`;
+  window.location.href = mailto;
+}
+
+function buildEmailBody(){
+  const w={pass:1,attn:0.5,fail:0};
+  let body = '';
+  state.qcRooms.forEach(room=>{
+    const data=state.qcRoomData[room]||{};
+    const items=getChecklistForRoom(room);
+    const rated=Object.keys(data).filter(k=>data[k].rating&&data[k].rating!=='na');
+    const score=rated.length?Math.round((rated.reduce((a,k)=>a+(w[data[k].rating]||0),0)/rated.length)*100):null;
+    body += `${room}: ${score!==null?score+'%':'Not rated'}
+`;
+    Object.keys(data).forEach(k=>{
+      if(data[k].rating==='fail'||data[k].rating==='attn'){
+        body += `  ⚠ ${items[k]||''}${data[k].note?' — '+data[k].note:''}
+`;
+      }
+    });
+  });
+  return body;
 }
 
 function buildQCReport(){
@@ -893,7 +959,7 @@ function buildQCReport(){
   state.qcRooms.forEach(room=>{
     const data=state.qcRoomData[room]||{};
     const items=getChecklistForRoom(room);
-    const rated=Object.keys(data).filter(k=>data[k].rating);
+    const rated=Object.keys(data).filter(k=>data[k].rating&&data[k].rating!=='na');
     const score=rated.length?Math.round((rated.reduce((a,k)=>a+(w[data[k].rating]||0),0)/rated.length)*100):null;
     const bc=score>=90?'badge-green':score>=75?'badge-amber':'badge-red';
     roomScoresHtml+=`<div class="report-room-row"><span>${room}</span><span class="badge ${bc}">${score!==null?score:'—'}</span></div>`;
