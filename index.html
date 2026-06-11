@@ -1358,7 +1358,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Load supervisor list from Supabase
-  fetch(`${SUPABASE_URL}/rest/v1/kencal_supervisors?select=name&active=eq.true&order=name.asc&limit=200`, {
+  fetch(`${SUPABASE_URL}/rest/v1/kencal_supervisors?select=name&role=in.(supervisor,manager)&active=eq.true&order=name.asc&limit=200`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Accept: 'application/json' }
   }).then(r => r.json()).then(sups => {
     if (!sups || !sups.length) return;
