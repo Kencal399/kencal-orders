@@ -931,7 +931,7 @@ async function loadQCLocations(){
 }
 
 async function selectQCLocation(id,name,job_number){
-  state.qcLocation={id,name,address};
+  state.qcLocation={id,name:name,job_number:job_number};
   document.getElementById('qc-loc-title').textContent=name;
   showScreen('s-qc-location');
   try {
