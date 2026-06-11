@@ -984,10 +984,10 @@ async function loadQCLocations(){
     if(state.supervisor.role==='admin'||state.supervisor.role==='manager'){
       locs=await sbFetch('kencal_locations?active=eq.true&select=id,display_name,job_number&order=display_name');
     } else {
-      const locIds=await sbFetch(`kencal_supervisor_locations?supervisor_id=eq.${state.supervisor.id}&select=location_id`);
-      const ids=locIds.map(l=>l.location_id).join(',');
-      if(!ids){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
-      locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,display_name,job_number&order=display_name`);
+      const supLocs=await sbFetch(`kencal_supervisor_locations?supervisor=eq.${encodeURIComponent(state.supervisor.name)}&active=eq.true&select=job_number`);
+      const jobNums=supLocs.map(l=>l.job_number).join(',');
+      if(!jobNums){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned. Contact admin.</p>';return;}
+      locs=await sbFetch(`kencal_locations?job_number=in.(${jobNums})&active=eq.true&select=id,display_name,job_number&order=display_name`);
     }
         window._qcLocs = locs;
     list.innerHTML=locs.map((l,i)=>`
