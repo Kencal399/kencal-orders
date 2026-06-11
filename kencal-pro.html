@@ -910,6 +910,8 @@ function buildQCReport(){
 async function loadQCLocations(){
   const list=document.getElementById('qc-loc-list');
   list.innerHTML='<div class="loading"><div class="spinner"></div>Loading…</div>';
+  const searchEl=document.getElementById('qc-search');
+  if(searchEl) searchEl.value='';
   buildQCTemplateGrid();
   try {
     let locs;
@@ -939,9 +941,13 @@ async function loadQCLocations(){
 
 function filterQCLocations(query) {
   const q = query.toLowerCase().trim();
+  if(!window._qcLocs) return;
   const rows = document.querySelectorAll('#qc-loc-list .loc-row');
-  rows.forEach(row => {
-    row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  rows.forEach((row, i) => {
+    const loc = window._qcLocs[parseInt(row.dataset.idx)];
+    if(!loc) return;
+    const text = ((loc.display_name||'')+(loc.job_number||'')).toLowerCase();
+    row.style.display = (!q || text.includes(q)) ? '' : 'none';
   });
 }
 
