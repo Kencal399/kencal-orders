@@ -1545,6 +1545,7 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-btn').forEach(b => { if (b.dataset.tab === tabId) b.classList.add('active'); });
   if (tabId === 'admin') setTimeout(buildAdminPanel, 50);
   if (tabId === 'imperial') setTimeout(loadImperialOrders, 50);
+  if (tabId === 'distribution') setTimeout(initDistTab, 50);
   if (tabId === 'winteam') setTimeout(function() {
     var today = new Date(), y = today.getFullYear(), m = today.getMonth();
     var firstDay = new Date(y, m, 1).toISOString().split('T')[0];
@@ -3630,12 +3631,6 @@ let distSelectedItem = null;
 let distCart = [];
 let allDistributions = [];
 let allWarehouseItems = {};
-
-document.addEventListener('click', function(e) {
-  if (e.target.dataset && e.target.dataset.tab === 'distribution') {
-    setTimeout(initDistTab, 100);
-  }
-});
 
 function initDistTab() {
   const today = new Date().toISOString().split('T')[0];
