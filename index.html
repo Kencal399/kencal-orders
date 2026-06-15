@@ -3632,6 +3632,167 @@ let distCart = [];
 let allDistributions = [];
 let allWarehouseItems = {};
 
+function setDistMode(mode) {
+  document.getElementById('distOrderMode').classList.toggle('hidden', mode !== 'order');
+  document.getElementById('distStockMode').classList.toggle('hidden', mode !== 'stock');
+  document.getElementById('distModeOrderBtn').className = mode === 'order' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  document.getElementById('distModeStockBtn').className = mode === 'stock' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  document.getElementById('distModeLabel').textContent = mode === 'order' ? 'Distributing from an approved order' : 'Logging warehouse stock distribution';
+  if (mode === 'order') loadSentOrdersForDist();
+}
+
+async function loadSentOrdersForDist() {
+  const sel = document.getElementById('distOrderSelect');
+  if (sel.options.length > 1) return;
+  try {
+    showLoading('Loading sent orders...');
+    const orders = await sb.query('kencal_orders', {filter: {status: 'sent', is_dropship: false}, order: 'created_at.desc'});
+    hideLoading();
+    if (!orders || orders.error || orders.length === 0) {
+      sel.innerHTML = '<option value="">-- No sent warehouse orders found --</option>';
+      return;
+    }
+    window._sentOrdersForDist = orders;
+    orders.forEach(function(o) {
+      const opt = document.createElement('option');
+      opt.value = o.id;
+      const date = new Date(o.created_at).toLocaleDateString('en-US', {month:'short', day:'numeric'});
+      const itemCount = Object.keys(o.items||{}).length;
+      opt.textContent = date + ' — ' + o.location_name + ' (' + o.supervisor + ') — ' + itemCount + ' items';
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    hideLoading();
+    console.error('Failed to load orders for dist:', e);
+    alert('Could not load orders: ' + e.message);
+  }
+}
+
+function onDistOrderSelected() {
+  const orderId = parseInt(document.getElementById('distOrderSelect').value);
+  const order = (window._sentOrdersForDist||[]).find(function(o) { return o.id === orderId; });
+  if (!order) {
+    document.getElementById('distOrderLocArea').classList.add('hidden');
+    document.getElementById('distOrderItemsArea').classList.add('hidden');
+    return;
+  }
+  window._currentDistOrder = order;
+  const locSel = document.getElementById('distOrderLocSelect');
+  locSel.innerHTML = '<option value="">-- Select location --</option>';
+  const allLocs = Object.entries(LOCATION_NAMES).sort(function(a,b) { return a[1].localeCompare(b[1]); });
+  allLocs.forEach(function(entry) {
+    const opt = document.createElement('option');
+    opt.value = entry[0];
+    opt.textContent = entry[1] + ' (' + entry[0] + ')';
+    locSel.appendChild(opt);
+  });
+  const customOpt = document.createElement('option');
+  customOpt.value = '__custom__';
+  customOpt.textContent = 'Location not listed — type it in...';
+  locSel.appendChild(customOpt);
+  const dateInput = document.getElementById('distOrderDate');
+  if (!dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
+  document.getElementById('distOrderLocArea').classList.remove('hidden');
+  document.getElementById('distOrderItemsArea').classList.add('hidden');
+}
+
+function onDistOrderLocSelected() {
+  const val = document.getElementById('distOrderLocSelect').value;
+  const customArea = document.getElementById('distOrderCustomLocArea');
+  customArea.style.display = val === '__custom__' ? 'block' : 'none';
+  if (val) buildOrderDistItems();
+}
+
+function buildOrderDistItems() {
+  const order = window._currentDistOrder;
+  if (!order) return;
+  const tbody = document.getElementById('distOrderItemsBody');
+  tbody.innerHTML = '';
+  Object.entries(order.items || {}).forEach(function(entry) {
+    const id = entry[0], item = entry[1];
+    const tr = document.createElement('tr');
+    const safeName = (item.name||'').replace(/"/g, "'");
+    tr.innerHTML = '<td>' + id + '</td>' +
+      '<td>' + (item.name||'') + '</td>' +
+      '<td>' + item.qty + ' ' + (item.unitType||'Case') + '</td>' +
+      '<td><input type="number" class="dist-order-qty" data-id="' + id + '" data-name="' + safeName + '" data-unit="' + (item.unit||'') + '" data-unittype="' + (item.unitType||'Case') + '" min="0" step="0.5" placeholder="0" style="width:80px;padding:4px 8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"></td>' +
+      '<td>' + (item.unitType||'Case') + '</td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('distOrderItemsArea').classList.remove('hidden');
+}
+
+async function submitOrderDistribution() {
+  const order = window._currentDistOrder;
+  if (!order) return;
+  const locSelVal = document.getElementById('distOrderLocSelect').value;
+  const customLoc = document.getElementById('distOrderCustomLoc').value.trim();
+  const locName = locSelVal === '__custom__' ? customLoc : (LOCATION_NAMES[locSelVal] || locSelVal);
+  const locJob = locSelVal === '__custom__' ? null : locSelVal;
+  const date = document.getElementById('distOrderDate').value;
+  const resultEl = document.getElementById('distOrderResult');
+  if (!locName) { alert('Please select or enter a location.'); return; }
+  if (!date) { alert('Please select a date.'); return; }
+  const rows = document.querySelectorAll('.dist-order-qty');
+  const items = [];
+  rows.forEach(function(inp) {
+    const qty = parseFloat(inp.value) || 0;
+    if (qty > 0) items.push({ id: inp.dataset.id, name: inp.dataset.name, unit: inp.dataset.unit, unitType: inp.dataset.unittype, qty: qty });
+  });
+  if (items.length === 0) { alert('Please enter at least one quantity to deliver.'); return; }
+  showLoading('Logging ' + items.length + ' items...');
+  let hasError = false;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const result = await sb.insert('kencal_distributions', {
+      distribution_date: date,
+      job_number: locJob,
+      job_description: locName,
+      item_number: item.id,
+      item_description: item.name,
+      quantity: item.qty,
+      unit: item.unitType || item.unit || 'Case',
+      dest_type: 'order',
+      source_order_id: order.id,
+      source_order_ref: order.order_ref,
+      supervisor: order.supervisor,
+      status: locJob ? 'active' : 'pending',
+      winteam_entered: false,
+      logged_by: currentUser,
+      created_at: new Date().toISOString()
+    });
+    if (result && result.error) { hasError = true; console.error(result.error); }
+  }
+  hideLoading();
+  if (hasError) {
+    resultEl.innerHTML = '<span style="color:red">Some items may not have saved. Check the log.</span>';
+  } else {
+    resultEl.innerHTML = '<span style="color:green">✓ Logged ' + items.length + ' items for ' + locName + '. Select another location to continue distributing.</span>';
+    rows.forEach(function(inp) { inp.value = ''; });
+    document.getElementById('distOrderLocSelect').value = '';
+    document.getElementById('distOrderCustomLoc').value = '';
+    document.getElementById('distOrderItemsArea').classList.add('hidden');
+    document.getElementById('distOrderLocArea').classList.add('hidden');
+    loadDistributions();
+  }
+}
+
+function resetOrderDist() {
+  document.getElementById('distOrderSelect').value = '';
+  document.getElementById('distOrderLocArea').classList.add('hidden');
+  document.getElementById('distOrderItemsArea').classList.add('hidden');
+  document.getElementById('distOrderResult').innerHTML = '';
+  window._currentDistOrder = null;
+}
+
+async function toggleWinTeamEntered(distId, checked) {
+  try {
+    await sb.update('kencal_distributions', { winteam_entered: checked }, 'id=eq.' + distId);
+    const entry = allDistributions.find(function(d) { return d.id === distId; });
+    if (entry) entry.winteam_entered = checked;
+  } catch(e) { console.error('WinTeam toggle failed:', e); }
+}
+
 function initDistTab() {
   const today = new Date().toISOString().split('T')[0];
   const dateInput = document.getElementById('distDate');
