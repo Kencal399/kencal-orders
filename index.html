@@ -698,124 +698,193 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
   <!-- DISTRIBUTION LOG TAB -->
   <div class="tab-content" id="tab-distribution">
     <div class="section-title">Warehouse Distribution Log
-      <span class="sub">Log all supplies distributed from warehouse stock</span>
+      <span class="sub">Log supplies distributed from warehouse stock</span>
     </div>
 
-    <!-- Log Entry Form -->
-    <div class="card">
-      <div class="card-title">+ Log Distribution</div>
+    <!-- Mode selector -->
+    <div class="card" style="padding:12px 16px">
+      <div class="flex-gap">
+        <button id="distModeOrderBtn" class="btn btn-primary btn-sm" onclick="setDistMode('order')"> From Order</button>
+        <button id="distModeStockBtn" class="btn btn-outline btn-sm" onclick="setDistMode('stock')"> From Stock</button>
+        <span id="distModeLabel" style="font-size:12px;color:#888;align-self:center">Select a mode to log a distribution</span>
+      </div>
+    </div>
 
-      <!-- Step 1: Date and Destination -->
-      <div class="form-row">
-        <div class="form-group">
-          <label>Date</label>
-          <input type="date" id="distDate" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-        </div>
-        <div class="form-group">
-          <label>Destination Type</label>
-          <select id="distType" onchange="onDistTypeChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-            <option value="">-- Select type --</option>
-            <option value="jobsite">Job Site (Construction / Day Job)</option>
-            <option value="supervisor">Supervisor / Contract Location</option>
+    <!-- FROM ORDER MODE -->
+    <div id="distOrderMode" class="hidden">
+      <div class="card">
+        <div class="card-title"> Distribute from Order</div>
+
+        <!-- Step 1: Pick order -->
+        <div class="form-group mb-8">
+          <label style="font-size:12px;font-weight:600">Step 1 — Select Order</label>
+          <select id="distOrderSelect" onchange="onDistOrderSelected()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+            <option value="">-- Select a sent order --</option>
           </select>
         </div>
-      </div>
 
-      <!-- Job Site destination -->
-      <div id="distJobSiteArea" class="hidden">
-        <div class="form-group mb-8">
-          <label>Search Job / Location</label>
-          <input type="text" id="distJobSearch" placeholder="Type job name, address, or job number..."
-            oninput="searchDistJobs(this.value)"
-            style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-          <div id="distJobResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
+        <!-- Step 2: Pick location -->
+        <div id="distOrderLocArea" class="hidden">
+          <div class="divider"></div>
+          <label style="font-size:12px;font-weight:600">Step 2 — Select Location to Deliver To</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;margin-bottom:8px">
+            <div class="form-group">
+              <select id="distOrderLocSelect" onchange="onDistOrderLocSelected()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+                <option value="">-- Select location --</option>
+                <option value="__custom__">Type in location...</option>
+              </select>
+            </div>
+            <div class="form-group" id="distOrderCustomLocArea" style="display:none">
+              <input type="text" id="distOrderCustomLoc" placeholder="Enter location name" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+            </div>
+          </div>
+          <div class="form-group mb-8">
+            <label style="font-size:12px;font-weight:600">Date</label>
+            <input type="date" id="distOrderDate" style="width:200px;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          </div>
         </div>
-        <div id="distSelectedJob" class="hidden">
-          <div class="alert alert-info mb-8" id="distSelectedJobBadge"></div>
-        </div>
-      </div>
 
-      <!-- Supervisor destination -->
-      <div id="distSupervisorArea" class="hidden">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Supervisor</label>
-            <select id="distSupervisorSelect" onchange="onDistSupervisorChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-              <option value="">-- Select supervisor --</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Location</label>
-            <select id="distSupervisorLocation" onchange="onDistSupervisorLocationChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-              <option value="">-- Select supervisor first --</option>
-            </select>
-          </div>
-        </div>
-        <div id="distSupLocationBadge" class="hidden">
-          <div class="alert alert-info mb-8" id="distSupLocationBadgeInner"></div>
-        </div>
-      </div>
-
-      <!-- Step 2: Add Items (shown after destination selected) -->
-      <div id="distItemArea" class="hidden">
-        <div class="divider"></div>
-        <div class="card-title" style="font-size:13px;margin-bottom:10px">Add Items</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Search Item</label>
-            <input type="text" id="distItemSearch" placeholder="Type item number or description..."
-              oninput="searchDistItems(this.value)"
-              style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-            <div id="distItemResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
-          </div>
-          <div class="form-group">
-            <label>Selected Item</label>
-            <div id="distSelectedItemBadge" style="padding:10px 12px;background:var(--off-white);border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;color:var(--gray-dark);min-height:42px">No item selected</div>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Quantity</label>
-            <input type="number" id="distQty" min="0.5" step="0.5" placeholder="e.g. 3"
-              style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-          </div>
-          <div class="form-group">
-            <label>Unit</label>
-            <select id="distUnit" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-              <option value="Each">Each</option>
-              <option value="Case">Case</option>
-              <option value="Box">Box</option>
-              <option value="Gallon">Gallon</option>
-              <option value="Roll">Roll</option>
-              <option value="Bag">Bag</option>
-              <option value="Pair">Pair</option>
-              <option value="Bottle">Bottle</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group mb-8">
-          <label>Notes for this item (optional)</label>
-          <input type="text" id="distItemNotes" placeholder="Any additional info"
-            style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="addItemToCart()">+ Add to List</button>
-
-        <!-- Cart -->
-        <div id="distCart" class="hidden" style="margin-top:16px">
-          <div class="card-title" style="font-size:13px;margin-bottom:8px">Items to Log <span class="count-badge" id="distCartCount">0</span></div>
+        <!-- Step 3: Enter quantities -->
+        <div id="distOrderItemsArea" class="hidden">
+          <div class="divider"></div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:8px">Step 3 — Enter Quantities Delivered</label>
           <table class="review-table" style="margin-bottom:12px">
-            <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead>
-            <tbody id="distCartBody"></tbody>
+            <thead><tr><th>Item #</th><th>Description</th><th>Ordered</th><th>Qty to Deliver</th><th>Unit</th></tr></thead>
+            <tbody id="distOrderItemsBody"></tbody>
           </table>
           <div class="flex-gap">
-            <button class="btn btn-green" onclick="logDistribution()">OK Submit All Items</button>
-            <button class="btn btn-outline" onclick="resetDistForm()">Clear All</button>
+            <button class="btn btn-green" onclick="submitOrderDistribution()">✓ Log This Location</button>
+            <button class="btn btn-outline" onclick="resetOrderDist()">Clear</button>
+          </div>
+          <div id="distOrderResult" style="margin-top:8px;font-size:12px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FROM STOCK MODE (existing flow, preserved) -->
+    <div id="distStockMode" class="hidden">
+      <div class="card">
+        <div class="card-title">+ Log Stock Distribution</div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="distDate" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+          </div>
+          <div class="form-group">
+            <label>Destination Type</label>
+            <select id="distType" onchange="onDistTypeChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+              <option value="">-- Select type --</option>
+              <option value="jobsite">Job Site (Construction / Day Job)</option>
+              <option value="supervisor">Supervisor / Contract Location</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Job Site destination -->
+        <div id="distJobSiteArea" class="hidden">
+          <div class="form-group mb-8">
+            <label>Search Job / Location</label>
+            <input type="text" id="distJobSearch" placeholder="Type job name, address, or job number..."
+              oninput="searchDistJobs(this.value)"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+            <div id="distJobResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
+          </div>
+          <div id="distSelectedJob" class="hidden">
+            <div class="alert alert-info mb-8" id="distSelectedJobBadge"></div>
+          </div>
+          <div class="form-group mb-8">
+            <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
+            <input type="text" id="distCustomLocation" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          </div>
+        </div>
+
+        <!-- Supervisor destination -->
+        <div id="distSupervisorArea" class="hidden">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Supervisor</label>
+              <select id="distSupervisorSelect" onchange="onDistSupervisorChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+                <option value="">-- Select supervisor --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Location</label>
+              <select id="distSupervisorLocation" onchange="onDistSupervisorLocationChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+                <option value="">-- Select supervisor first --</option>
+              </select>
+            </div>
+          </div>
+          <div id="distSupLocationBadge" class="hidden">
+            <div class="alert alert-info mb-8" id="distSupLocationBadgeInner"></div>
+          </div>
+          <div class="form-group mb-8">
+            <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
+            <input type="text" id="distCustomLocationSup" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          </div>
+        </div>
+
+        <!-- Add Items -->
+        <div id="distItemArea" class="hidden">
+          <div class="divider"></div>
+          <div class="card-title" style="font-size:13px;margin-bottom:10px">Add Items</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Search Item</label>
+              <input type="text" id="distItemSearch" placeholder="Type item number or description..."
+                oninput="searchDistItems(this.value)"
+                style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+              <div id="distItemResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
+            </div>
+            <div class="form-group">
+              <label>Selected Item</label>
+              <div id="distSelectedItemBadge" style="padding:10px 12px;background:var(--off-white);border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;color:var(--gray-dark);min-height:42px">No item selected</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Quantity</label>
+              <input type="number" id="distQty" min="0.5" step="0.5" placeholder="e.g. 3"
+                style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+            </div>
+            <div class="form-group">
+              <label>Unit</label>
+              <select id="distUnit" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+                <option value="Each">Each</option>
+                <option value="Case">Case</option>
+                <option value="Box">Box</option>
+                <option value="Gallon">Gallon</option>
+                <option value="Roll">Roll</option>
+                <option value="Bag">Bag</option>
+                <option value="Pair">Pair</option>
+                <option value="Bottle">Bottle</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group mb-8">
+            <label>Notes for this item (optional)</label>
+            <input type="text" id="distItemNotes" placeholder="Any additional info"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="addItemToCart()">+ Add to List</button>
+
+          <!-- Cart -->
+          <div id="distCart" class="hidden" style="margin-top:16px">
+            <div class="card-title" style="font-size:13px;margin-bottom:8px">Items to Log <span class="count-badge" id="distCartCount">0</span></div>
+            <table class="review-table" style="margin-bottom:12px">
+              <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead>
+              <tbody id="distCartBody"></tbody>
+            </table>
+            <div class="flex-gap">
+              <button class="btn btn-green" onclick="logDistribution()">OK Submit All Items</button>
+              <button class="btn btn-outline" onclick="resetDistForm()">Clear All</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Log Table -->
+    <!-- Distribution Log Table -->
     <div class="card">
       <div class="card-title"> Distribution Log
         <div class="flex-gap" style="margin-left:auto">
@@ -831,18 +900,24 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <option value="">All Types</option>
           <option value="jobsite">Job Sites</option>
           <option value="supervisor">Supervisors</option>
+          <option value="order">From Order</option>
         </select>
         <select id="distFilterStatus" onchange="filterDistributions()">
           <option value="active">Active</option>
           <option value="">All</option>
           <option value="pending">Pending Job #</option>
         </select>
+        <select id="distFilterWinTeam" onchange="filterDistributions()" style="display:none">
+          <option value="">All</option>
+          <option value="0">Not entered in WinTeam</option>
+          <option value="1">Entered in WinTeam</option>
+        </select>
       </div>
       <div id="distLogTable"></div>
     </div>
 
-    <!-- Pending Jobs Panel -->
-    <div class="card" id="distPendingPanel">
+    <!-- Pending Job Numbers (admin only) -->
+    <div class="card" id="distPendingPanel" style="display:none">
       <div class="card-title">! Pending Job Numbers
         <span class="sub" style="margin-left:8px">Assign WinTeam job numbers to unmatched entries</span>
       </div>
@@ -850,6 +925,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
 
   </div>
+
 
   <!-- IMPERIAL CSV TAB (Mary/Rick only) -->  <!-- IMPERIAL CSV TAB (Mary/Rick only) -->  <!-- IMPERIAL CSV TAB (Mary/Rick only) -->
   <div class="tab-content" id="tab-imperial">
@@ -3990,22 +4066,23 @@ function renderDistLog(distributions) {
       '<span class="badge badge-dropship">Job Site</span>';
     const destination = d.dest_type === 'supervisor' && d.supervisor ? 
       d.supervisor + ' -> ' + d.job_description : d.job_description;
-    return '<tr style="' + (isPending ? 'background:var(--orange-light)' : '') + '">' +
+    return '<tr style="' + rowBg + '">' +
       '<td>' + d.distribution_date + '</td>' +
       '<td>' + typeLabel + '</td>' +
       '<td>' + (d.job_number || '<span style="color:var(--orange);font-weight:600">Pending</span>') + '</td>' +
-      '<td>' + destination + '</td>' +
+      '<td>' + destination + orderRef + '</td>' +
       '<td>' + d.item_number + '</td>' +
       '<td>' + d.item_description + '</td>' +
       '<td><strong>' + d.quantity + '</strong></td>' +
       '<td>' + d.unit + '</td>' +
       '<td>' + (d.notes || '') + '</td>' +
+      (isMary ? wtCell : '') +
       '<td><button class="btn btn-danger btn-xs" onclick="deleteDistribution(' + d.id + ')">X</button></td>' +
       '</tr>';
   }).join('');
 
   container.innerHTML = '<div style="overflow-x:auto"><table class="review-table" style="width:100%;min-width:900px">' +
-    '<thead><tr><th>Date</th><th>Type</th><th>Job #</th><th>Destination</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead>' +
+    '<thead><tr><th>Date</th><th>Type</th><th>Job #</th><th>Destination</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th>' + (isMary ? '<th>WinTeam</th>' : '') + '<th></th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>';
 }
 
