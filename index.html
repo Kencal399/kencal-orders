@@ -1013,6 +1013,53 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     <button class="btn btn-danger btn-sm" onclick="bulkRemoveProductFromSupervisor()"> Remove from All Locations</button>
     <div id="bulkRemoveResult" style="margin-top:8px;font-size:12px"></div>
 
+    <!-- Swap Product -->
+    <div class="divider"></div>
+    <div class="card-title" style="font-size:13px"> Swap Product Across Locations</div>
+    <div style="margin-bottom:10px;font-size:12px;color:#666">Replaces an existing item with a new one everywhere it currently exists.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="form-group">
+        <label>Old Item # (to remove)</label>
+        <input type="text" id="swapOldId" placeholder="e.g. GloveMed-Old">
+      </div>
+      <div class="form-group">
+        <label>New Item # (to add)</label>
+        <input type="text" id="swapNewId" placeholder="e.g. GloveMed-New">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="form-group">
+        <label>New Item Description</label>
+        <input type="text" id="swapNewDesc" placeholder="e.g. Vinyl Glove Medium">
+      </div>
+      <div class="form-group">
+        <label>Unit</label>
+        <input type="text" id="swapNewUnit" placeholder="e.g. Case" value="Case">
+      </div>
+      <div class="form-group">
+        <label>Type/Category</label>
+        <input type="text" id="swapNewType" placeholder="e.g. Gloves">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Scope</label>
+      <select id="swapScope" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px" onchange="updateSwapPreview()">
+        <option value="all">All locations</option>
+        <option value="supervisor">Specific supervisor</option>
+      </select>
+    </div>
+    <div id="swapSupRow" style="display:none;margin-bottom:8px">
+      <div class="form-group">
+        <label>Supervisor</label>
+        <select id="swapSupSelect" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          <option value="">-- Select supervisor --</option>
+        </select>
+      </div>
+    </div>
+    <div id="swapPreview" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+    <button class="btn btn-primary btn-sm" onclick="swapProduct()"> Swap Product</button>
+    <div id="swapResult" style="margin-top:8px;font-size:12px"></div>
+
     <div id="masterProductModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
       <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -3020,6 +3067,90 @@ async function bulkAddProductToSupervisor() {
   document.getElementById('bulkItemId').value = '';
 }
 
+function updateSwapPreview() {
+  const scope = document.getElementById('swapScope').value;
+  document.getElementById('swapSupRow').style.display = scope === 'supervisor' ? 'block' : 'none';
+}
+
+async function swapProduct() {
+  const oldId   = document.getElementById('swapOldId').value.trim();
+  const newId   = document.getElementById('swapNewId').value.trim();
+  const newDesc = document.getElementById('swapNewDesc').value.trim();
+  const newUnit = document.getElementById('swapNewUnit').value.trim() || 'Case';
+  const newType = document.getElementById('swapNewType').value.trim() || 'Supply';
+  const scope   = document.getElementById('swapScope').value;
+  const supName = document.getElementById('swapSupSelect').value;
+  const resultEl = document.getElementById('swapResult');
+
+  if (!oldId) { alert('Please enter the old item number.'); return; }
+  if (!newId) { alert('Please enter the new item number.'); return; }
+  if (!newDesc) { alert('Please enter a description for the new item.'); return; }
+  if (oldId === newId) { alert('Old and new item numbers are the same.'); return; }
+  if (scope === 'supervisor' && !supName) { alert('Please select a supervisor.'); return; }
+
+  // Determine which jobs to scan
+  let jobsToScan;
+  if (scope === 'supervisor') {
+    jobsToScan = SUPERVISOR_LOCATIONS[supName] || [];
+  } else {
+    jobsToScan = Object.keys(locationProducts);
+  }
+
+  // Find jobs that actually have the old item
+  const jobsWithOld = jobsToScan.filter(j => locationProducts[j] && locationProducts[j][oldId]);
+
+  if (jobsWithOld.length === 0) {
+    alert('Item "' + oldId + '" not found in any of the selected locations.');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    'Swap "' + oldId + '" → "' + newId + '" (' + newDesc + ')\n' +
+    'Affects ' + jobsWithOld.length + ' location(s).\n\n' +
+    'This will ADD the new item and REMOVE the old item. Continue?'
+  );
+  if (!confirmed) return;
+
+  showLoading('Swapping product across ' + jobsWithOld.length + ' locations...');
+  resultEl.innerHTML = '';
+  let added = 0, removed = 0, failed = 0;
+
+  for (const job of jobsWithOld) {
+    try {
+      // Add new item
+      const addR = await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_products`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ job_number: job, item_number: newId, item_description: newDesc, unit: newUnit, item_type: newType, active: true })
+      });
+      if (addR.ok) {
+        if (!locationProducts[job]) locationProducts[job] = {};
+        locationProducts[job][newId] = { desc: newDesc, unit: newUnit, type: newType };
+        added++;
+      } else { failed++; continue; }
+
+      // Remove old item
+      const delR = await fetch(
+        `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}&item_number=eq.${encodeURIComponent(oldId)}`,
+        { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (delR.ok) {
+        delete locationProducts[job][oldId];
+        removed++;
+      } else { failed++; }
+    } catch(e) { failed++; }
+  }
+
+  hideLoading();
+  let msg = `Done: <strong>${added} added, ${removed} removed</strong>`;
+  if (failed) msg += `, <span style="color:red">${failed} failed</span>`;
+  resultEl.innerHTML = msg;
+
+  // Clear fields
+  ['swapOldId','swapNewId','swapNewDesc','swapNewType'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('swapNewUnit').value = 'Case';
+}
+
 async function bulkRemoveProductFromSupervisor() {
   const supName = document.getElementById('bulkRemoveSupSelect').value;
   const itemId = document.getElementById('bulkRemoveItemId').value.trim();
@@ -3062,7 +3193,7 @@ async function bulkRemoveProductFromSupervisor() {
 }
 
 function populateBulkSupSelect() {
-  ['bulkSupSelect', 'bulkRemoveSupSelect'].forEach(function(selId) {
+  ['bulkSupSelect', 'bulkRemoveSupSelect', 'swapSupSelect'].forEach(function(selId) {
     const sel = document.getElementById(selId);
     if (!sel || sel.options.length > 1) return;
     Object.keys(SUPERVISOR_LOCATIONS).sort().forEach(name => {
@@ -3072,12 +3203,14 @@ function populateBulkSupSelect() {
       opt.textContent = name + ' (' + count + ' locations)';
       sel.appendChild(opt);
     });
-    const previewId = selId === 'bulkSupSelect' ? 'bulkSupPreview' : 'bulkRemovePreview';
-    sel.addEventListener('change', function() {
-      const jobs = SUPERVISOR_LOCATIONS[this.value] || [];
-      const prev = document.getElementById(previewId);
-      if (prev) prev.textContent = jobs.length ? 'Locations: ' + jobs.map(j => LOCATION_NAMES[j]||j).join(', ') : '';
-    });
+    const previewId = selId === 'bulkSupSelect' ? 'bulkSupPreview' : selId === 'bulkRemoveSupSelect' ? 'bulkRemovePreview' : null;
+    if (previewId) {
+      sel.addEventListener('change', function() {
+        const jobs = SUPERVISOR_LOCATIONS[this.value] || [];
+        const prev = document.getElementById(previewId);
+        if (prev) prev.textContent = jobs.length ? 'Locations: ' + jobs.map(j => LOCATION_NAMES[j]||j).join(', ') : '';
+      });
+    }
   });
 }
 
