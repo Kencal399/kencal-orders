@@ -4059,13 +4059,22 @@ function renderDistLog(distributions) {
     return;
   }
 
+  const isMary = currentRole === 'mary' || currentRole === 'admin';
   const rows = distributions.map(function(d) {
     const isPending = d.status === 'pending';
-    const typeLabel = d.dest_type === 'supervisor' ? 
-      '<span class="badge badge-warehouse">Supervisor</span>' : 
-      '<span class="badge badge-dropship">Job Site</span>';
-    const destination = d.dest_type === 'supervisor' && d.supervisor ? 
+    const isWTEntered = d.winteam_entered || false;
+    const typeLabel = d.dest_type === 'order'
+      ? '<span class="badge badge-dropship">From Order</span>'
+      : d.dest_type === 'supervisor'
+        ? '<span class="badge badge-warehouse">Supervisor</span>'
+        : '<span class="badge badge-dropship">Job Site</span>';
+    const destination = d.dest_type === 'supervisor' && d.supervisor ?
       d.supervisor + ' -> ' + d.job_description : d.job_description;
+    const orderRef = d.source_order_ref ? '<br><span style="font-size:10px;color:#888">Order: ' + d.source_order_ref + '</span>' : '';
+    const rowBg = isWTEntered ? 'background:#f0fdf4' : isPending ? 'background:var(--orange-light)' : '';
+    const wtCell = isMary
+      ? '<td><input type="checkbox" ' + (isWTEntered ? 'checked' : '') + ' onchange="toggleWinTeamEntered(' + d.id + ', this.checked)" title="Mark as entered in WinTeam"> ' + (isWTEntered ? '<span style="color:green;font-size:11px">✓ Done</span>' : '<span style="color:#888;font-size:11px">Pending</span>') + '</td>'
+      : '';
     return '<tr style="' + rowBg + '">' +
       '<td>' + d.distribution_date + '</td>' +
       '<td>' + typeLabel + '</td>' +
