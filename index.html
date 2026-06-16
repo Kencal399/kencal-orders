@@ -1092,6 +1092,20 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     <button class="btn btn-primary btn-sm" onclick="swapProduct()"> Swap Product</button>
     <div id="swapResult" style="margin-top:8px;font-size:12px"></div>
 
+    <!-- Remove Location -->
+    <div class="divider"></div>
+    <div class="card-title" style="font-size:13px"> Remove Location</div>
+    <div style="margin-bottom:10px;font-size:12px;color:#666">Removes a location and all its products from the tool. Does not affect WinTeam or order history.</div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Select Location to Remove</label>
+      <select id="removeLocSelect" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px" onchange="updateRemoveLocPreview()">
+        <option value="">-- Select location --</option>
+      </select>
+    </div>
+    <div id="removeLocPreview" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+    <button class="btn btn-danger btn-sm" onclick="removeLocation()"> Remove Location</button>
+    <div id="removeLocResult" style="margin-top:8px;font-size:12px"></div>
+
     <div id="masterProductModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
       <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -2833,6 +2847,7 @@ function buildAdminPanel() {
   // Load pending location requests
   renderLocationRequests();
   populateBulkSupSelect();
+  populateRemoveLocSelect(false);
 
   // Supervisor list
   const tbody = document.getElementById('adminSupBody');
@@ -3103,6 +3118,79 @@ async function bulkAddProductToSupervisor() {
 function updateSwapPreview() {
   const scope = document.getElementById('swapScope').value;
   document.getElementById('swapSupRow').style.display = scope === 'supervisor' ? 'block' : 'none';
+}
+
+function updateRemoveLocPreview() {
+  const sel = document.getElementById('removeLocSelect');
+  const job = sel.value;
+  const prev = document.getElementById('removeLocPreview');
+  if (!job) { prev.textContent = ''; return; }
+  const locName = LOCATION_NAMES[job] || job;
+  const productCount = locationProducts[job] ? Object.keys(locationProducts[job]).length : 0;
+  prev.textContent = locName + ' — ' + productCount + ' products will be removed.';
+}
+
+async function removeLocation() {
+  const sel = document.getElementById('removeLocSelect');
+  const job = sel.value;
+  const resultEl = document.getElementById('removeLocResult');
+  if (!job) { alert('Please select a location to remove.'); return; }
+  const locName = LOCATION_NAMES[job] || job;
+  const productCount = locationProducts[job] ? Object.keys(locationProducts[job]).length : 0;
+
+  const confirmed = window.confirm(
+    'Remove "' + locName + '" (Job ' + job + ')?\n\n' +
+    'This will delete ' + productCount + ' products assigned to this location.\n\n' +
+    'Order history and WinTeam data are NOT affected.\n\nThis cannot be undone.'
+  );
+  if (!confirmed) return;
+
+  showLoading('Removing location...');
+  resultEl.innerHTML = '';
+
+  try {
+    // Delete all products for this location
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}`,
+      { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!r.ok) throw new Error('Failed to delete products (HTTP ' + r.status + ')');
+
+    // Remove from local cache
+    delete locationProducts[job];
+
+    // Remove from LOCATION_NAMES and SUPERVISOR_LOCATIONS in memory
+    delete LOCATION_NAMES[job];
+    Object.keys(SUPERVISOR_LOCATIONS).forEach(function(sup) {
+      SUPERVISOR_LOCATIONS[sup] = SUPERVISOR_LOCATIONS[sup].filter(function(j) { return j !== job; });
+    });
+
+    hideLoading();
+    resultEl.innerHTML = '<span style="color:green">✓ ' + locName + ' removed successfully.</span>';
+
+    // Repopulate dropdown
+    sel.value = '';
+    document.getElementById('removeLocPreview').textContent = '';
+    populateRemoveLocSelect(true);
+
+  } catch(e) {
+    hideLoading();
+    resultEl.innerHTML = '<span style="color:red">Error: ' + e.message + '</span>';
+  }
+}
+
+function populateRemoveLocSelect(force) {
+  const sel = document.getElementById('removeLocSelect');
+  if (!sel) return;
+  if (!force && sel.options.length > 1) return;
+  sel.innerHTML = '<option value="">-- Select location --</option>';
+  Object.entries(LOCATION_NAMES).sort(function(a,b) { return a[1].localeCompare(b[1]); }).forEach(function(entry) {
+    const opt = document.createElement('option');
+    opt.value = entry[0];
+    const productCount = locationProducts[entry[0]] ? Object.keys(locationProducts[entry[0]]).length : 0;
+    opt.textContent = entry[1] + ' (Job ' + entry[0] + ') — ' + productCount + ' products';
+    sel.appendChild(opt);
+  });
 }
 
 async function swapProduct() {
