@@ -697,196 +697,153 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 
   <!-- DISTRIBUTION LOG TAB -->
   <div class="tab-content" id="tab-distribution">
-    <div class="section-title">Warehouse Distribution Log
-      <span class="sub">Log supplies distributed from warehouse stock</span>
+    <div class="section-title">Warehouse Distribution
+      <span class="sub">Delivery sheet and stock log</span>
     </div>
 
-    <!-- Mode selector -->
-    <div class="card" style="padding:12px 16px">
-      <div class="flex-gap">
-        <button id="distModeOrderBtn" class="btn btn-primary btn-sm" onclick="setDistMode('order')"> From Order</button>
-        <button id="distModeStockBtn" class="btn btn-outline btn-sm" onclick="setDistMode('stock')"> From Stock</button>
-        <span id="distModeLabel" style="font-size:12px;color:#888;align-self:center">Select a mode to log a distribution</span>
+    <!-- SECTION 1: DELIVERY SHEET -->
+    <div class="card">
+      <div class="card-title"> Pending Deliveries
+        <div class="flex-gap" style="margin-left:auto">
+          <button class="btn btn-primary btn-sm" onclick="loadDeliverySheet()"> Refresh</button>
+          <button class="btn btn-green btn-sm" onclick="printDeliverySheet()"> Print Sheet</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px">
+        All approved warehouse orders ready to be distributed. Use this as your delivery guide.
+      </div>
+      <div id="deliverySheetList">
+        <div class="empty-state"><div class="icon"></div><p>Click Refresh to load pending deliveries.</p></div>
       </div>
     </div>
 
-    <!-- FROM ORDER MODE -->
-    <div id="distOrderMode" class="hidden">
-      <div class="card">
-        <div class="card-title"> Distribute from Order</div>
+    <!-- SECTION 2: STOCK LOG -->
+    <div class="card">
+      <div class="card-title">+ Log Stock Delivery</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px">
+        Record items delivered from warehouse stock (not from a supervisor order). Mary uses this for WinTeam job costing.
+      </div>
 
-        <!-- Step 1: Pick order -->
-        <div class="form-group mb-8">
-          <label style="font-size:12px;font-weight:600">Step 1 — Select Order</label>
-          <select id="distOrderSelect" onchange="onDistOrderSelected()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
-            <option value="">-- Select a sent order --</option>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="distDate" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+        </div>
+        <div class="form-group">
+          <label>Destination Type</label>
+          <select id="distType" onchange="onDistTypeChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+            <option value="">-- Select type --</option>
+            <option value="jobsite">Job Site (Construction / Day Job)</option>
+            <option value="supervisor">Supervisor / Contract Location</option>
           </select>
         </div>
+      </div>
 
-        <!-- Step 2: Pick location -->
-        <div id="distOrderLocArea" class="hidden">
-          <div class="divider"></div>
-          <label style="font-size:12px;font-weight:600">Step 2 — Select Location to Deliver To</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;margin-bottom:8px">
-            <div class="form-group">
-              <select id="distOrderLocSelect" onchange="onDistOrderLocSelected()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
-                <option value="">-- Select location --</option>
-                <option value="__custom__">Type in location...</option>
-              </select>
-            </div>
-            <div class="form-group" id="distOrderCustomLocArea" style="display:none">
-              <input type="text" id="distOrderCustomLoc" placeholder="Enter location name" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
-            </div>
-          </div>
-          <div class="form-group mb-8">
-            <label style="font-size:12px;font-weight:600">Date</label>
-            <input type="date" id="distOrderDate" style="width:200px;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
-          </div>
+      <!-- Job Site destination -->
+      <div id="distJobSiteArea" class="hidden">
+        <div class="form-group mb-8">
+          <label>Search Job / Location</label>
+          <input type="text" id="distJobSearch" placeholder="Type job name, address, or job number..."
+            oninput="searchDistJobs(this.value)"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+          <div id="distJobResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
         </div>
-
-        <!-- Step 3: Enter quantities -->
-        <div id="distOrderItemsArea" class="hidden">
-          <div class="divider"></div>
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:8px">Step 3 — Enter Quantities Delivered</label>
-          <table class="review-table" style="margin-bottom:12px">
-            <thead><tr><th>Item #</th><th>Description</th><th>Ordered</th><th>Qty to Deliver</th><th>Unit</th></tr></thead>
-            <tbody id="distOrderItemsBody"></tbody>
-          </table>
-          <div class="flex-gap">
-            <button class="btn btn-green" onclick="submitOrderDistribution()">✓ Log This Location</button>
-            <button class="btn btn-outline" onclick="resetOrderDist()">Clear</button>
-          </div>
-          <div id="distOrderResult" style="margin-top:8px;font-size:12px"></div>
+        <div id="distSelectedJob" class="hidden">
+          <div class="alert alert-info mb-8" id="distSelectedJobBadge"></div>
+        </div>
+        <div class="form-group mb-8">
+          <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
+          <input type="text" id="distCustomLocation" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
         </div>
       </div>
-    </div>
 
-    <!-- FROM STOCK MODE (existing flow, preserved) -->
-    <div id="distStockMode" class="hidden">
-      <div class="card">
-        <div class="card-title">+ Log Stock Distribution</div>
-
+      <!-- Supervisor destination -->
+      <div id="distSupervisorArea" class="hidden">
         <div class="form-row">
           <div class="form-group">
-            <label>Date</label>
-            <input type="date" id="distDate" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+            <label>Supervisor</label>
+            <select id="distSupervisorSelect" onchange="onDistSupervisorChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+              <option value="">-- Select supervisor --</option>
+            </select>
           </div>
           <div class="form-group">
-            <label>Destination Type</label>
-            <select id="distType" onchange="onDistTypeChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-              <option value="">-- Select type --</option>
-              <option value="jobsite">Job Site (Construction / Day Job)</option>
-              <option value="supervisor">Supervisor / Contract Location</option>
+            <label>Location</label>
+            <select id="distSupervisorLocation" onchange="onDistSupervisorLocationChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+              <option value="">-- Select supervisor first --</option>
             </select>
           </div>
         </div>
+        <div id="distSupLocationBadge" class="hidden">
+          <div class="alert alert-info mb-8" id="distSupLocationBadgeInner"></div>
+        </div>
+        <div class="form-group mb-8">
+          <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
+          <input type="text" id="distCustomLocationSup" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+        </div>
+      </div>
 
-        <!-- Job Site destination -->
-        <div id="distJobSiteArea" class="hidden">
-          <div class="form-group mb-8">
-            <label>Search Job / Location</label>
-            <input type="text" id="distJobSearch" placeholder="Type job name, address, or job number..."
-              oninput="searchDistJobs(this.value)"
+      <!-- Add Items -->
+      <div id="distItemArea" class="hidden">
+        <div class="divider"></div>
+        <div class="card-title" style="font-size:13px;margin-bottom:10px">Add Items</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Search Item</label>
+            <input type="text" id="distItemSearch" placeholder="Type item number or description..."
+              oninput="searchDistItems(this.value)"
               style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-            <div id="distJobResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
+            <div id="distItemResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
           </div>
-          <div id="distSelectedJob" class="hidden">
-            <div class="alert alert-info mb-8" id="distSelectedJobBadge"></div>
-          </div>
-          <div class="form-group mb-8">
-            <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
-            <input type="text" id="distCustomLocation" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          <div class="form-group">
+            <label>Selected Item</label>
+            <div id="distSelectedItemBadge" style="padding:10px 12px;background:var(--off-white);border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;color:var(--gray-dark);min-height:42px">No item selected</div>
           </div>
         </div>
-
-        <!-- Supervisor destination -->
-        <div id="distSupervisorArea" class="hidden">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Supervisor</label>
-              <select id="distSupervisorSelect" onchange="onDistSupervisorChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-                <option value="">-- Select supervisor --</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Location</label>
-              <select id="distSupervisorLocation" onchange="onDistSupervisorLocationChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-                <option value="">-- Select supervisor first --</option>
-              </select>
-            </div>
-          </div>
-          <div id="distSupLocationBadge" class="hidden">
-            <div class="alert alert-info mb-8" id="distSupLocationBadgeInner"></div>
-          </div>
-          <div class="form-group mb-8">
-            <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
-            <input type="text" id="distCustomLocationSup" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
-          </div>
-        </div>
-
-        <!-- Add Items -->
-        <div id="distItemArea" class="hidden">
-          <div class="divider"></div>
-          <div class="card-title" style="font-size:13px;margin-bottom:10px">Add Items</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Search Item</label>
-              <input type="text" id="distItemSearch" placeholder="Type item number or description..."
-                oninput="searchDistItems(this.value)"
-                style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-              <div id="distItemResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
-            </div>
-            <div class="form-group">
-              <label>Selected Item</label>
-              <div id="distSelectedItemBadge" style="padding:10px 12px;background:var(--off-white);border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;color:var(--gray-dark);min-height:42px">No item selected</div>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Quantity</label>
-              <input type="number" id="distQty" min="0.5" step="0.5" placeholder="e.g. 3"
-                style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-            </div>
-            <div class="form-group">
-              <label>Unit</label>
-              <select id="distUnit" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
-                <option value="Each">Each</option>
-                <option value="Case">Case</option>
-                <option value="Box">Box</option>
-                <option value="Gallon">Gallon</option>
-                <option value="Roll">Roll</option>
-                <option value="Bag">Bag</option>
-                <option value="Pair">Pair</option>
-                <option value="Bottle">Bottle</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group mb-8">
-            <label>Notes for this item (optional)</label>
-            <input type="text" id="distItemNotes" placeholder="Any additional info"
+        <div class="form-row">
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" id="distQty" min="0.5" step="0.5" placeholder="e.g. 3"
               style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
           </div>
-          <button class="btn btn-primary btn-sm" onclick="addItemToCart()">+ Add to List</button>
+          <div class="form-group">
+            <label>Unit</label>
+            <select id="distUnit" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+              <option value="Each">Each</option>
+              <option value="Case">Case</option>
+              <option value="Box">Box</option>
+              <option value="Gallon">Gallon</option>
+              <option value="Roll">Roll</option>
+              <option value="Bag">Bag</option>
+              <option value="Pair">Pair</option>
+              <option value="Bottle">Bottle</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group mb-8">
+          <label>Notes (optional)</label>
+          <input type="text" id="distItemNotes" placeholder="Any additional info"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addItemToCart()">+ Add to List</button>
 
-          <!-- Cart -->
-          <div id="distCart" class="hidden" style="margin-top:16px">
-            <div class="card-title" style="font-size:13px;margin-bottom:8px">Items to Log <span class="count-badge" id="distCartCount">0</span></div>
-            <table class="review-table" style="margin-bottom:12px">
-              <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead>
-              <tbody id="distCartBody"></tbody>
-            </table>
-            <div class="flex-gap">
-              <button class="btn btn-green" onclick="logDistribution()">OK Submit All Items</button>
-              <button class="btn btn-outline" onclick="resetDistForm()">Clear All</button>
-            </div>
+        <!-- Cart -->
+        <div id="distCart" class="hidden" style="margin-top:16px">
+          <div class="card-title" style="font-size:13px;margin-bottom:8px">Items to Log <span class="count-badge" id="distCartCount">0</span></div>
+          <table class="review-table" style="margin-bottom:12px">
+            <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="distCartBody"></tbody>
+          </table>
+          <div class="flex-gap">
+            <button class="btn btn-green" onclick="logDistribution()">✓ Submit Stock Log</button>
+            <button class="btn btn-outline" onclick="resetDistForm()">Clear All</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Distribution Log Table -->
+    <!-- SECTION 3: STOCK LOG TABLE -->
     <div class="card">
-      <div class="card-title"> Distribution Log
+      <div class="card-title"> Stock Distribution Log
         <div class="flex-gap" style="margin-left:auto">
           <button class="btn btn-primary btn-sm" onclick="loadDistributions()"> Refresh</button>
           <button class="btn btn-green btn-sm" onclick="exportDistributionPDF()"> Print / PDF</button>
@@ -900,7 +857,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <option value="">All Types</option>
           <option value="jobsite">Job Sites</option>
           <option value="supervisor">Supervisors</option>
-          <option value="order">From Order</option>
         </select>
         <select id="distFilterStatus" onchange="filterDistributions()">
           <option value="active">Active</option>
@@ -908,7 +864,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <option value="pending">Pending Job #</option>
         </select>
         <select id="distFilterWinTeam" onchange="filterDistributions()" style="display:none">
-          <option value="">All</option>
+          <option value="">All WinTeam</option>
           <option value="0">Not entered in WinTeam</option>
           <option value="1">Entered in WinTeam</option>
         </select>
@@ -3632,40 +3588,101 @@ let distCart = [];
 let allDistributions = [];
 let allWarehouseItems = {};
 
-function setDistMode(mode) {
-  document.getElementById('distOrderMode').classList.toggle('hidden', mode !== 'order');
-  document.getElementById('distStockMode').classList.toggle('hidden', mode !== 'stock');
-  document.getElementById('distModeOrderBtn').className = mode === 'order' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
-  document.getElementById('distModeStockBtn').className = mode === 'stock' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
-  document.getElementById('distModeLabel').textContent = mode === 'order' ? 'Distributing from an approved order' : 'Logging warehouse stock distribution';
-  if (mode === 'order') loadSentOrdersForDist();
-}
+function setDistMode(mode) {} // legacy stub - no longer used
 
-async function loadSentOrdersForDist() {
-  const sel = document.getElementById('distOrderSelect');
-  if (sel.options.length > 1) return;
+async function loadDeliverySheet() {
+  const container = document.getElementById('deliverySheetList');
+  container.innerHTML = '<div style="color:#888;font-size:13px">Loading...</div>';
   try {
-    showLoading('Loading sent orders...');
     const orders = await sb.query('kencal_orders', {filter: {status: 'sent', is_dropship: false}, order: 'created_at.desc'});
-    hideLoading();
     if (!orders || orders.error || orders.length === 0) {
-      sel.innerHTML = '<option value="">-- No sent warehouse orders found --</option>';
+      container.innerHTML = '<div class="alert alert-success">No pending warehouse deliveries.</div>';
       return;
     }
-    window._sentOrdersForDist = orders;
-    orders.forEach(function(o) {
-      const opt = document.createElement('option');
-      opt.value = o.id;
-      const date = new Date(o.created_at).toLocaleDateString('en-US', {month:'short', day:'numeric'});
-      const itemCount = Object.keys(o.items||{}).length;
-      opt.textContent = date + ' — ' + o.location_name + ' (' + o.supervisor + ') — ' + itemCount + ' items';
-      sel.appendChild(opt);
+    // Group by location
+    const byLocation = {};
+    orders.forEach(function(order) {
+      const loc = order.location_name;
+      if (!byLocation[loc]) byLocation[loc] = { job: order.job_number, items: {} };
+      Object.entries(order.items || {}).forEach(function(e) {
+        const id = e[0], item = e[1];
+        if (byLocation[loc].items[id]) {
+          byLocation[loc].items[id].qty += (parseFloat(item.qty) || 0);
+        } else {
+          byLocation[loc].items[id] = { name: item.name, qty: parseFloat(item.qty)||0, unit: item.unit, unitType: item.unitType||'Case' };
+        }
+      });
     });
+
+    window._deliverySheetData = byLocation;
+
+    let html = '';
+    Object.keys(byLocation).sort().forEach(function(loc) {
+      const data = byLocation[loc];
+      const rows = Object.entries(data.items).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
+        const id = e[0], item = e[1];
+        return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee">' + id + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.name + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center"><strong>' + item.qty + '</strong></td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.unitType + '</td></tr>';
+      }).join('');
+      html += '<div style="margin-bottom:16px;border:1px solid var(--gray-light);border-radius:8px;overflow:hidden">' +
+        '<div style="background:var(--navy);color:white;padding:10px 14px;font-weight:700;font-size:14px">' + loc +
+        (data.job ? ' <span style="font-weight:400;font-size:12px;opacity:0.8">Job ' + data.job + '</span>' : '') + '</div>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="background:#f5f7fa"><th style="padding:6px 8px;text-align:left;font-size:12px">Item #</th>' +
+        '<th style="padding:6px 8px;text-align:left;font-size:12px">Description</th>' +
+        '<th style="padding:6px 8px;text-align:center;font-size:12px">Qty</th>' +
+        '<th style="padding:6px 8px;text-align:left;font-size:12px">Unit</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>';
+    });
+    container.innerHTML = html;
   } catch(e) {
-    hideLoading();
-    console.error('Failed to load orders for dist:', e);
-    alert('Could not load orders: ' + e.message);
+    container.innerHTML = '<div class="alert alert-error">Could not load: ' + e.message + '</div>';
   }
+}
+
+function printDeliverySheet() {
+  const data = window._deliverySheetData;
+  if (!data || Object.keys(data).length === 0) {
+    alert('Please click Refresh first to load the delivery sheet.');
+    return;
+  }
+  let body = '';
+  Object.keys(data).sort().forEach(function(loc) {
+    const d = data[loc];
+    const rows = Object.entries(d.items).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
+      const id = e[0], item = e[1];
+      return '<tr><td>' + id + '</td><td>' + item.name + '</td><td style="text-align:center"><strong>' + item.qty + '</strong></td><td>' + item.unitType + '</td><td style="width:80px">&nbsp;</td></tr>';
+    }).join('');
+    body += '<div class="loc-block">' +
+      '<div class="loc-header">' + loc + (d.job ? ' — Job ' + d.job : '') + '</div>' +
+      '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivered ✓</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  });
+  const css = 'body{font-family:Arial,sans-serif;padding:24px;color:#222}' +
+    'h2{margin:0 0 4px;color:#1a2e4a}.date{font-size:12px;color:#888;margin-bottom:20px}' +
+    '.loc-block{margin-bottom:24px;break-inside:avoid}' +
+    '.loc-header{background:#1a2e4a;color:white;padding:8px 12px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0}' +
+    'table{width:100%;border-collapse:collapse;border:1px solid #ddd;border-top:none}' +
+    'th{background:#f5f7fa;padding:6px 8px;text-align:left;font-size:12px;border-bottom:1px solid #ddd}' +
+    'td{padding:6px 8px;font-size:13px;border-bottom:1px solid #eee}' +
+    '@media print{button{display:none}}';
+  const html = '<!DOCTYPE html><html><head><title>Delivery Sheet</title><style>' + css + '</style></head><body>' +
+    '<h2>Warehouse Delivery Sheet</h2>' +
+    '<div class="date">Printed: ' + new Date().toLocaleDateString('en-US', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</div>' +
+    body +
+    '<scr' + 'ipt>window.onload=function(){window.print();}</scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank', 'width=820,height=950');
+  w.document.write(html);
+  w.document.close();
+}
+
+async function toggleWinTeamEntered(distId, checked) {
+  try {
+    await sb.update('kencal_distributions', { winteam_entered: checked }, 'id=eq.' + distId);
+    const entry = allDistributions.find(function(d) { return d.id === distId; });
+    if (entry) entry.winteam_entered = checked;
+  } catch(e) { console.error('WinTeam toggle failed:', e); }
 }
 
 function onDistOrderSelected() {
@@ -3785,13 +3802,6 @@ function resetOrderDist() {
   window._currentDistOrder = null;
 }
 
-async function toggleWinTeamEntered(distId, checked) {
-  try {
-    await sb.update('kencal_distributions', { winteam_entered: checked }, 'id=eq.' + distId);
-    const entry = allDistributions.find(function(d) { return d.id === distId; });
-    if (entry) entry.winteam_entered = checked;
-  } catch(e) { console.error('WinTeam toggle failed:', e); }
-}
 
 function initDistTab() {
   const today = new Date().toISOString().split('T')[0];
@@ -3802,6 +3812,7 @@ function initDistTab() {
   populateDistSupervisors();
   buildWarehouseItemIndex();
   loadDistributions();
+  loadDeliverySheet();
 }
 
 function buildWarehouseItemIndex() {
