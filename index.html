@@ -2366,7 +2366,7 @@ async function updateDeliveryDate(id, date) {
 
 async function updateItemRebill(orderId, itemId, isRebill) {
   try {
-    const order = (window._maryOrders||[]).find(o=>o.id===orderId);
+    const order = (window._maryOrders || maryOrders || []).find(o=>o.id===orderId);
     if (!order || !order.items || !order.items[itemId]) return;
     order.items[itemId].rebill = isRebill;
     await sb.update('kencal_orders', { items: order.items }, `id=eq.${orderId}`);
@@ -2376,7 +2376,7 @@ async function updateItemRebill(orderId, itemId, isRebill) {
 async function updateOrderPO(orderId, poValue) {
   try {
     await sb.update('kencal_orders', { po_number: poValue }, `id=eq.${orderId}`);
-    const order = (window._maryOrders||[]).find(o=>o.id===orderId);
+    const order = (window._maryOrders || maryOrders || []).find(o=>o.id===orderId);
     if (order) order.po_number = poValue;
   } catch(e) { console.error('PO update failed:', e); }
 }
@@ -3403,7 +3403,7 @@ function showMasterProductList() {
 }
 
 function printOrderCard(orderId) {
-  const order = (window._maryOrders || []).find(o => o.id === orderId);
+  const order = (window._maryOrders || maryOrders || []).find(o => o.id === orderId);
   if (!order) { alert('Order not found.'); return; }
   const items = order.items || {};
   const dateStr = new Date(order.created_at).toLocaleDateString('en-US',
@@ -3445,7 +3445,7 @@ function printOrderCard(orderId) {
 }
 
 function showAddItemPanel(orderId) {
-  const order = (window._maryOrders||[]).find(o=>o.id==orderId);
+  const order = (window._maryOrders || maryOrders || []).find(o=>o.id==orderId);
   if (!order) return;
   const products = locationProducts[order.job_number] || {};
   let opts = '<option value="">-- Select item --</option>';
@@ -3476,7 +3476,7 @@ function showAddItemPanel(orderId) {
 }
 
 async function confirmAddItem(orderId) {
-  const order = (window._maryOrders||[]).find(o=>o.id==orderId);
+  const order = (window._maryOrders || maryOrders || []).find(o=>o.id==orderId);
   if (!order) return;
   const sel = document.getElementById('addItemSelect_'+orderId);
   const itemId = sel ? sel.value : "";
