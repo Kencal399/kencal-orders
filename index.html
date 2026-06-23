@@ -641,6 +641,15 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 
     <div id="maryOrdersList"></div>
 
+    <!-- Stock Accumulator -->
+    <div class="card" id="stockAccumulatorCard" style="display:none">
+      <div class="card-title"> From Stock Accumulator
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="buildStockAccumulator()"> Refresh</button>
+      </div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px">Items marked "From Stock" across current orders. When quantities are sufficient, order them as part of the next warehouse bulk order.</div>
+      <div id="stockAccumulatorBody"></div>
+    </div>
+
     <!-- Create Order Panel -->
     <div id="createOrderPanel" class="hidden">
       <div class="card">
@@ -2066,6 +2075,7 @@ async function loadMaryOrders() {
     renderMaryOrders(maryOrders);
     updatePendingCount();
     populateSupervisorFilter();
+    buildStockAccumulator();
   } catch(e) {
     document.getElementById('maryOrdersList').innerHTML =
       `<div class="alert alert-error">! Could not load orders: ${e.message}<br><br>
@@ -2261,14 +2271,21 @@ function renderOrderCard(order, view) {
 
   const itemRows = Object.entries(items).map(([id, item]) => {
     const isRebillItem = item.rebill !== undefined ? item.rebill : (order.rebill || false);
+    const isFromStock = item.fromStock === true;
     const rebillToggle = isSent
       ? (isRebillItem ? '<span style="color:#c07000;font-size:11px">Rebill</span>' : '<span style="color:#555;font-size:11px">Standard</span>')
       : `<select style="padding:3px 5px;border:1.5px solid var(--gray-light);border-radius:4px;font-size:11px"
           onchange="updateItemRebill('${order.id}','${id}',this.value==='rebill')">
           <option value="standard" ${!isRebillItem?'selected':''}>Standard</option>
           <option value="rebill" ${isRebillItem?'selected':''}>Rebill</option></select>`;
+    const stockToggle = isSent
+      ? (isFromStock ? '<span style="color:#7a5a00;font-size:11px;background:#fffbea;padding:2px 6px;border-radius:4px">From Stock</span>' : '<span style="color:#555;font-size:11px">Drop Ship</span>')
+      : `<select style="padding:3px 5px;border:1.5px solid var(--gray-light);border-radius:4px;font-size:11px;${isFromStock?'background:#fffbea':''}"
+          onchange="updateItemFromStock('${order.id}','${id}',this.value==='stock');this.style.background=this.value==='stock'?'#fffbea':''">
+          <option value="dropship" ${!isFromStock?'selected':''}>Drop Ship</option>
+          <option value="stock" ${isFromStock?'selected':''}>From Stock</option></select>`;
     const editBtn = isSent ? '' : `<button class='btn btn-danger btn-xs' onclick="removeOrderItem('${order.id}','${id}')">X</button>`;
-    return `<tr>
+    return `<tr style="${isFromStock?'background:#fffbea':''}">
       <td>${id}</td>
       <td>${item.name}</td>
       <td><input type="number" value="${item.qty}" min="0.5" step="0.5"
@@ -2277,6 +2294,7 @@ function renderOrderCard(order, view) {
       <td>${item.unitType||'Case'}</td>
       <td>${item.unit}</td>
       <td>${rebillToggle}</td>
+      <td>${stockToggle}</td>
       <td>${editBtn}</td>
     </tr>`;
   }).join('');
@@ -2339,7 +2357,7 @@ function renderOrderCard(order, view) {
       <div class="order-card-body" id="orderBody${order.id}">
         ${maryControls}
         <table class="review-table mt-8">
-          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th>${view === 'mary' ? '<th></th>' : ''}</tr></thead>
+          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Unit</th><th>Rebill</th><th>Fulfillment</th>${view === 'mary' ? '<th>Edit</th>' : ''}</tr></thead>
           <tbody>${itemRows}</tbody>
         </table>
       </div>
@@ -2366,11 +2384,71 @@ async function updateDeliveryDate(id, date) {
 
 async function updateItemRebill(orderId, itemId, isRebill) {
   try {
-    const order = (window._maryOrders || maryOrders || []).find(o=>o.id===orderId);
-    if (!order || !order.items || !order.items[itemId]) return;
+    const order = (window._maryOrders || maryOrders || []).find(o => String(o.id) === String(orderId));
+    if (!order || !order.items || !order.items[itemId]) {
+      console.error('updateItemRebill: order or item not found', orderId, itemId);
+      return;
+    }
     order.items[itemId].rebill = isRebill;
     await sb.update('kencal_orders', { items: order.items }, `id=eq.${orderId}`);
   } catch(e) { console.error('Item rebill update failed:', e); }
+}
+
+function buildStockAccumulator() {
+  const orders = maryOrders || [];
+  const accum = {};
+
+  orders.forEach(function(order) {
+    if (!order.items) return;
+    Object.entries(order.items).forEach(function(e) {
+      const id = e[0], item = e[1];
+      if (!item.fromStock) return;
+      if (!accum[id]) accum[id] = { name: item.name, unit: item.unit, unitType: item.unitType||'Case', totalQty: 0, locations: [] };
+      accum[id].totalQty += parseFloat(item.qty) || 0;
+      accum[id].locations.push(order.location_name);
+    });
+  });
+
+  const card = document.getElementById('stockAccumulatorCard');
+  const body = document.getElementById('stockAccumulatorBody');
+
+  if (Object.keys(accum).length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+  const rows = Object.entries(accum).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
+    const id = e[0], data = e[1];
+    return '<tr>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + id + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + data.name + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center"><strong>' + data.totalQty + '</strong></td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + data.unitType + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:#888">' + [...new Set(data.locations)].join(', ') + '</td>' +
+      '</tr>';
+  }).join('');
+
+  body.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="background:var(--navy);color:white">' +
+    '<th style="padding:6px 8px;text-align:left">Item #</th>' +
+    '<th style="padding:6px 8px;text-align:left">Description</th>' +
+    '<th style="padding:6px 8px;text-align:center">Total Qty</th>' +
+    '<th style="padding:6px 8px;text-align:left">Unit</th>' +
+    '<th style="padding:6px 8px;text-align:left">Locations</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+async function updateItemFromStock(orderId, itemId, isFromStock) {
+  try {
+    const order = (window._maryOrders || maryOrders || []).find(o => String(o.id) === String(orderId));
+    if (!order || !order.items || !order.items[itemId]) {
+      console.error('updateItemFromStock: order or item not found', orderId, itemId);
+      return;
+    }
+    order.items[itemId].fromStock = isFromStock;
+    await sb.update('kencal_orders', { items: order.items }, `id=eq.${orderId}`);
+  } catch(e) { console.error('Item fromStock update failed:', e); }
 }
 
 async function updateOrderPO(orderId, poValue) {
@@ -3052,7 +3130,7 @@ async function loadAdminProducts() {
     const editBtn = document.createElement('button');
     editBtn.className = 'btn btn-outline btn-xs';
     editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => editProduct(job, id, info.desc, info.unit, info.type));
+    editBtn.addEventListener('click', () => editProduct(job, id, info.desc, info.unit, info.type, info.vendor || 'Imperial'));
     btnDiv.appendChild(editBtn);
 
     const removeBtn = document.createElement('button');
@@ -3362,28 +3440,85 @@ async function addProductToLocation() {
 }
 
 async function editProduct(job, itemId, currentDesc, currentUnit, currentType) {
-  const newDesc = prompt('Edit description:', currentDesc);
-  if (newDesc === null) return;
-  const newUnit = prompt('Edit unit:', currentUnit);
-  if (newUnit === null) return;
+  // Remove any existing modal
+  const existing = document.getElementById('editProductModal');
+  if (existing) existing.remove();
 
-  showLoading('Saving...');
-  const url = `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}&item_number=eq.${encodeURIComponent(itemId)}`;
-  const r = await fetch(url, {
-    method: 'PATCH',
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ item_description: newDesc.trim(), unit: newUnit.trim() })
-  });
-  if (r.ok) {
-    if (locationProducts[job] && locationProducts[job][itemId]) {
-      locationProducts[job][itemId].desc = newDesc.trim();
-      locationProducts[job][itemId].unit = newUnit.trim();
-    }
-    await loadAdminProducts();
-  } else {
-    alert('Error saving changes.');
+  // Count how many locations have this item
+  const allJobs = Object.keys(locationProducts).filter(j => locationProducts[j] && locationProducts[j][itemId]);
+
+  const modal = document.createElement('div');
+  modal.id = 'editProductModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `<div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">
+    <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Edit Product</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Item # ${itemId}</div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Description</label>
+      <input type="text" id="editProdDesc" value="${currentDesc}" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Unit</label>
+      <input type="text" id="editProdUnit" value="${currentUnit}" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box">
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Type/Category</label>
+      <input type="text" id="editProdType" value="${currentType||''}" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box">
+    </div>
+    <div style="background:#fffbea;border:1px solid #f0d060;border-radius:6px;padding:10px 12px;margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="editProdAllLocs" style="width:16px;height:16px">
+        <span>Update across <strong>all ${allJobs.length} location${allJobs.length !== 1 ? 's' : ''}</strong> where this item exists</span>
+      </label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-green" onclick="saveEditProduct('${job}','${itemId}')" style="flex:1">Save</button>
+      <button class="btn btn-outline" onclick="document.getElementById('editProductModal').remove()" style="flex:1">Cancel</button>
+    </div>
+    <div id="editProdResult" style="margin-top:8px;font-size:12px"></div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function saveEditProduct(job, itemId) {
+  const newDesc = document.getElementById('editProdDesc').value.trim();
+  const newUnit = document.getElementById('editProdUnit').value.trim();
+  const newType = document.getElementById('editProdType').value.trim();
+  const updateAll = document.getElementById('editProdAllLocs').checked;
+  const resultEl = document.getElementById('editProdResult');
+
+  if (!newDesc) { alert('Description cannot be empty.'); return; }
+
+  const jobsToUpdate = updateAll
+    ? Object.keys(locationProducts).filter(j => locationProducts[j] && locationProducts[j][itemId])
+    : [job];
+
+  showLoading('Saving' + (updateAll ? ' across ' + jobsToUpdate.length + ' locations...' : '...'));
+  let failed = 0;
+
+  for (const j of jobsToUpdate) {
+    const url = `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${j}&item_number=eq.${encodeURIComponent(itemId)}`;
+    const r = await fetch(url, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_description: newDesc, unit: newUnit, item_type: newType })
+    });
+    if (r.ok) {
+      if (locationProducts[j] && locationProducts[j][itemId]) {
+        locationProducts[j][itemId].desc = newDesc;
+        locationProducts[j][itemId].unit = newUnit;
+        locationProducts[j][itemId].type = newType;
+      }
+    } else { failed++; }
   }
+
   hideLoading();
+  if (failed) {
+    resultEl.innerHTML = '<span style="color:red">' + failed + ' location(s) failed to update.</span>';
+  } else {
+    document.getElementById('editProductModal').remove();
+    await loadAdminProducts();
+  }
 }
 
 function showMasterProductList() {
@@ -3445,9 +3580,14 @@ function printOrderCard(orderId) {
 }
 
 function showAddItemPanel(orderId) {
-  const order = (window._maryOrders || maryOrders || []).find(o=>o.id==orderId);
-  if (!order) return;
-  const products = locationProducts[order.job_number] || {};
+  const order = (window._maryOrders || maryOrders || []).find(o => String(o.id) === String(orderId));
+  if (!order) { alert('Could not find order. Please refresh and try again.'); return; }
+  let products = locationProducts[order.job_number] || {};
+  if (Object.keys(products).length === 0) {
+    Object.values(locationProducts).forEach(function(lp) {
+      Object.entries(lp).forEach(function(e) { if (!products[e[0]]) products[e[0]] = e[1]; });
+    });
+  }
   let opts = '<option value="">-- Select item --</option>';
   Object.entries(products).sort((a,b)=>a[1].desc.localeCompare(b[1].desc)).forEach(function(e){
     const id=e[0], info=e[1];
