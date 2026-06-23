@@ -3645,13 +3645,14 @@ function showAddItemPanel(orderId) {
 }
 
 async function confirmAddItem(orderId) {
-  const order = (window._maryOrders || maryOrders || []).find(o=>o.id==orderId);
-  if (!order) return;
+  const order = (window._maryOrders || maryOrders || []).find(o => String(o.id) === String(orderId));
+  if (!order) { alert('Could not find order. Please refresh and try again.'); return; }
   const sel = document.getElementById('addItemSelect_'+orderId);
   const itemId = sel ? sel.value : "";
   const opt = sel ? sel.options[sel.selectedIndex] : null;
   const itemName = opt ? (opt.dataset.name || itemId) : itemId;
   const itemUnit = opt ? (opt.dataset.unit || "") : "";
+  const itemVendor = opt ? (opt.dataset.vendor || "Imperial") : "Imperial";
   const qty = parseFloat((document.getElementById('addItemQty_'+orderId)||{}).value) || 0;
   const unitType = (document.getElementById('addItemUnit_'+orderId)||{value:'Case'}).value;
   const isRebill = (document.getElementById('addItemRebill_'+orderId)||{value:'standard'}).value === 'rebill';
