@@ -496,15 +496,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <option value="mary">Mary Cintron</option>
         <option value="santiago_wh">Santiago Alzate (Warehouse)</option>
         <optgroup label="Supervisors">
-          <option value="sup_Gustavo Gutierrez">Gustavo Gutierrez</option>
-          <option value="sup_Damian Montes">Damian Montes</option>
-          <option value="sup_Santiago Alzate">Santiago Alzate</option>
-          <option value="sup_Hector Gomez 1.0">Hector Gomez 1.0</option>
-          <option value="sup_Hector Gomez 2.0">Hector Gomez 2.0</option>
-          <option value="sup_Pablo Ronquillo">Pablo Ronquillo</option>
-          <option value="sup_Jorge Henao">Jorge Henao</option>
-          <option value="sup_Alberto">Alberto</option>
-          <option value="sup_Jaime Chiroque">Jaime Chiroque</option>
+          <option value="sup_Gustavo">Gustavo</option>
+          <option value="sup_Damian">Damian</option>
+          <option value="sup_Santiago">Santiago Alzate</option>
+          <option value="sup_Hector 1.0">Hector 1.0</option>
+          <option value="sup_Hector 2.0">Hector 2.0</option>
+          <option value="sup_Pablo">Pablo</option>
+          <option value="sup_Jorge">Jorge</option>
         </optgroup>
       </select>
     </div>
@@ -587,7 +585,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div class="card-title"> Review Your Order</div>
         <div id="supReviewInfo" class="alert alert-info mb-8"></div>
         <table class="review-table">
-          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th></tr></thead>
+          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Unit</th></tr></thead>
           <tbody id="supReviewBody"></tbody>
         </table>
         <div class="divider"></div>
@@ -699,15 +697,33 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 
   <!-- DISTRIBUTION LOG TAB -->
   <div class="tab-content" id="tab-distribution">
-    <div class="section-title">Warehouse Distribution Log
-      <span class="sub">Log all supplies distributed from warehouse stock</span>
+    <div class="section-title">Warehouse Distribution
+      <span class="sub">Delivery sheet and stock log</span>
     </div>
 
-    <!-- Log Entry Form -->
+    <!-- SECTION 1: DELIVERY SHEET -->
     <div class="card">
-      <div class="card-title">+ Log Distribution</div>
+      <div class="card-title"> Pending Deliveries
+        <div class="flex-gap" style="margin-left:auto">
+          <button class="btn btn-primary btn-sm" onclick="loadDeliverySheet()"> Refresh</button>
+          <button class="btn btn-green btn-sm" onclick="printDeliverySheet()"> Print Sheet</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px">
+        All approved warehouse orders ready to be distributed. Use this as your delivery guide.
+      </div>
+      <div id="deliverySheetList">
+        <div class="empty-state"><div class="icon"></div><p>Click Refresh to load pending deliveries.</p></div>
+      </div>
+    </div>
 
-      <!-- Step 1: Date and Destination -->
+    <!-- SECTION 2: STOCK LOG -->
+    <div class="card">
+      <div class="card-title">+ Log Stock Delivery</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px">
+        Record items delivered from warehouse stock (not from a supervisor order). Mary uses this for WinTeam job costing.
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label>Date</label>
@@ -735,6 +751,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div id="distSelectedJob" class="hidden">
           <div class="alert alert-info mb-8" id="distSelectedJobBadge"></div>
         </div>
+        <div class="form-group mb-8">
+          <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
+          <input type="text" id="distCustomLocation" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+        </div>
       </div>
 
       <!-- Supervisor destination -->
@@ -756,9 +776,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div id="distSupLocationBadge" class="hidden">
           <div class="alert alert-info mb-8" id="distSupLocationBadgeInner"></div>
         </div>
+        <div class="form-group mb-8">
+          <label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label>
+          <input type="text" id="distCustomLocationSup" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+        </div>
       </div>
 
-      <!-- Step 2: Add Items (shown after destination selected) -->
+      <!-- Add Items -->
       <div id="distItemArea" class="hidden">
         <div class="divider"></div>
         <div class="card-title" style="font-size:13px;margin-bottom:10px">Add Items</div>
@@ -796,7 +820,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           </div>
         </div>
         <div class="form-group mb-8">
-          <label>Notes for this item (optional)</label>
+          <label>Notes (optional)</label>
           <input type="text" id="distItemNotes" placeholder="Any additional info"
             style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px">
         </div>
@@ -810,16 +834,16 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
             <tbody id="distCartBody"></tbody>
           </table>
           <div class="flex-gap">
-            <button class="btn btn-green" onclick="logDistribution()">OK Submit All Items</button>
+            <button class="btn btn-green" onclick="logDistribution()">✓ Submit Stock Log</button>
             <button class="btn btn-outline" onclick="resetDistForm()">Clear All</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Log Table -->
+    <!-- SECTION 3: STOCK LOG TABLE -->
     <div class="card">
-      <div class="card-title"> Distribution Log
+      <div class="card-title"> Stock Distribution Log
         <div class="flex-gap" style="margin-left:auto">
           <button class="btn btn-primary btn-sm" onclick="loadDistributions()"> Refresh</button>
           <button class="btn btn-green btn-sm" onclick="exportDistributionPDF()"> Print / PDF</button>
@@ -839,12 +863,17 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
           <option value="">All</option>
           <option value="pending">Pending Job #</option>
         </select>
+        <select id="distFilterWinTeam" onchange="filterDistributions()" style="display:none">
+          <option value="">All WinTeam</option>
+          <option value="0">Not entered in WinTeam</option>
+          <option value="1">Entered in WinTeam</option>
+        </select>
       </div>
       <div id="distLogTable"></div>
     </div>
 
-    <!-- Pending Jobs Panel -->
-    <div class="card" id="distPendingPanel">
+    <!-- Pending Job Numbers (admin only) -->
+    <div class="card" id="distPendingPanel" style="display:none">
       <div class="card-title">! Pending Job Numbers
         <span class="sub" style="margin-left:8px">Assign WinTeam job numbers to unmatched entries</span>
       </div>
@@ -852,6 +881,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
 
   </div>
+
 
   <!-- IMPERIAL CSV TAB (Mary/Rick only) -->  <!-- IMPERIAL CSV TAB (Mary/Rick only) -->  <!-- IMPERIAL CSV TAB (Mary/Rick only) -->
   <div class="tab-content" id="tab-imperial">
@@ -1015,6 +1045,67 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     <button class="btn btn-danger btn-sm" onclick="bulkRemoveProductFromSupervisor()"> Remove from All Locations</button>
     <div id="bulkRemoveResult" style="margin-top:8px;font-size:12px"></div>
 
+    <!-- Swap Product -->
+    <div class="divider"></div>
+    <div class="card-title" style="font-size:13px"> Swap Product Across Locations</div>
+    <div style="margin-bottom:10px;font-size:12px;color:#666">Replaces an existing item with a new one everywhere it currently exists.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="form-group">
+        <label>Old Item # (to remove)</label>
+        <input type="text" id="swapOldId" placeholder="e.g. GloveMed-Old">
+      </div>
+      <div class="form-group">
+        <label>New Item # (to add)</label>
+        <input type="text" id="swapNewId" placeholder="e.g. GloveMed-New">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="form-group">
+        <label>New Item Description</label>
+        <input type="text" id="swapNewDesc" placeholder="e.g. Vinyl Glove Medium">
+      </div>
+      <div class="form-group">
+        <label>Unit</label>
+        <input type="text" id="swapNewUnit" placeholder="e.g. Case" value="Case">
+      </div>
+      <div class="form-group">
+        <label>Type/Category</label>
+        <input type="text" id="swapNewType" placeholder="e.g. Gloves">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Scope</label>
+      <select id="swapScope" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px" onchange="updateSwapPreview()">
+        <option value="all">All locations</option>
+        <option value="supervisor">Specific supervisor</option>
+      </select>
+    </div>
+    <div id="swapSupRow" style="display:none;margin-bottom:8px">
+      <div class="form-group">
+        <label>Supervisor</label>
+        <select id="swapSupSelect" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          <option value="">-- Select supervisor --</option>
+        </select>
+      </div>
+    </div>
+    <div id="swapPreview" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+    <button class="btn btn-primary btn-sm" onclick="swapProduct()"> Swap Product</button>
+    <div id="swapResult" style="margin-top:8px;font-size:12px"></div>
+
+    <!-- Remove Location -->
+    <div class="divider"></div>
+    <div class="card-title" style="font-size:13px"> Remove Location</div>
+    <div style="margin-bottom:10px;font-size:12px;color:#666">Removes a location and all its products from the tool. Does not affect WinTeam or order history.</div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Select Location to Remove</label>
+      <select id="removeLocSelect" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px" onchange="updateRemoveLocPreview()">
+        <option value="">-- Select location --</option>
+      </select>
+    </div>
+    <div id="removeLocPreview" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+    <button class="btn btn-danger btn-sm" onclick="removeLocation()"> Remove Location</button>
+    <div id="removeLocResult" style="margin-top:8px;font-size:12px"></div>
+
     <div id="masterProductModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
       <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -1161,13 +1252,13 @@ const ADMIN_PASSWORD = 'Kencal399!';
 const PROTECTED_USERS = ['rick','mary','santiago_wh'];
 
 const SUPERVISOR_LOCATIONS = {
-  "Gustavo Gutierrez":    ["22150","22151","22154","22155","22161","22167","22168","23125","23127","23135","23137","23142","20625","23700","21125","21200","21202","23890","23510","22300","20050","20054","22310","20600","20675"],
-  "Damian Montes":     ["45625","40575","40575b","40575c","45710","45710f","40600","45525","45676"],
-  "Santiago Alzate":   ["23100","23101","23101b","23101c","23103","23103b","47040","30755","30756","30754","11220","11235","10075","11350","30830","11240","30715","30715b","30125","30125b","11290","23601","30870","23880","80000"],
-  "Hector Gomez 1.0": ["21625","21625ab","23860","22800","22817","22819","22822","22826","30760","30760d","30760e","11280","45805","47055","23720","23720b"],
-  "Hector Gomez 2.0": ["10750","23720","22100","22107","22119","22126","22131","22136","22137","23455","23425","30750","30752","30758","30761","30775","30730","30760e","11310","20375","20400","23715","23716","23775","30075","30720","23400"],
-  "Pablo Ronquillo":      ["10175","40205","40210","40213","40216","40221","21801","11150","11225","40100","40100b","40101","40101c","40106","10050","40525","40580","30650","23460","23470","51300","51300b","51300c","51680","45750","45750b","45750c","45750d","11170","45650","45657","45658","45659","45660","45661","45662","45663","45664","45665","45666","45667","45668","45670","45671","45672","45673","45674","30754","23275","11300","20800","40450","40500","45775"],
-  "Jorge Henao":      ["50550","51150","51154","51174","51200","51050","51350","51352","51354","51354b","50900","50909","50913","50921","50922","50675","50677","50689","50775","50150","51640","23750","51600","51600b","51600c","51635","51635b","51650","51695","51530","51610","51645","51616","51690","51725","5007ex","51480","51481c","51483d","51485a","51485b","51485c","51485e","51486a","51730","51524c","80000CT","50350","51615","51560","51560c","51710","51720"]
+  "Gustavo":    ["22150","22151","22154","22155","22161","22167","22168","23125","23127","23135","23137","23142","20625","23700","21125","21200","21202","23890","23510","22300","20050","20054","22310","20600","20675"],
+  "Damian":     ["45625","40575","40575b","40575c","45710","45710f","40600","45525","45676"],
+  "Santiago":   ["23100","23101","23101b","23101c","23103","23103b","47040","30755","30756","30754","11220","11235","10075","11350","30830","11240","30715","30715b","30125","30125b","11290","23601","30870","23880","80000"],
+  "Hector 1.0": ["21625","21625ab","23860","22800","22817","22819","22822","22826","30760","30760d","30760e","11280","45805","47055","23720","23720b"],
+  "Hector 2.0": ["10750","23720","22100","22107","22119","22126","22131","22136","22137","23455","23425","30750","30752","30758","30761","30775","30730","30760e","11310","20375","20400","23715","23716","23775","30075","30720","23400"],
+  "Pablo":      ["10175","40205","40210","40213","40216","40221","21801","11150","11225","40100","40100b","40101","40101c","40106","10050","40525","40580","30650","23460","23470","51300","51300b","51300c","51680","45750","45750b","45750c","45750d","11170","45650","45657","45658","45659","45660","45661","45662","45663","45664","45665","45666","45667","45668","45670","45671","45672","45673","45674","30754","23275","11300","20800","40450","40500","45775"],
+  "Jorge":      ["50550","51150","51154","51174","51200","51050","51350","51352","51354","51354b","50900","50909","50913","50921","50922","50675","50677","50689","50775","50150","51640","23750","51600","51600b","51600c","51635","51635b","51650","51695","51530","51610","51645","51616","51690","51725","5007ex","51480","51481c","51483d","51485a","51485b","51485c","51485e","51486a","51730","51524c","80000CT","50350","51615","51560","51560c","51710","51720"]
 };
 
 // Imperial account mapping: job number -> { standard, rebill }
@@ -1360,7 +1451,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Load supervisor list from Supabase
-  fetch(`${SUPABASE_URL}/rest/v1/kencal_supervisors?select=name&role=eq.supervisor&active=eq.true&order=name.asc&limit=200`, {
+  fetch(`${SUPABASE_URL}/rest/v1/kencal_supervisors?select=name&active=eq.true&order=name.asc&limit=200`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Accept: 'application/json' }
   }).then(r => r.json()).then(sups => {
     if (!sups || !sups.length) return;
@@ -1424,6 +1515,7 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-btn').forEach(b => { if (b.dataset.tab === tabId) b.classList.add('active'); });
   if (tabId === 'admin') setTimeout(buildAdminPanel, 50);
   if (tabId === 'imperial') setTimeout(loadImperialOrders, 50);
+  if (tabId === 'distribution') setTimeout(initDistTab, 50);
   if (tabId === 'winteam') setTimeout(function() {
     var today = new Date(), y = today.getFullYear(), m = today.getMonth();
     var firstDay = new Date(y, m, 1).toISOString().split('T')[0];
@@ -1560,7 +1652,7 @@ async function loadLocationsFromSupabase() {
 
 async function loadSupervisorsFromSupabase() {
   try {
-    const sups = await sbFetch('kencal_supervisors?select=name&role=eq.supervisor&active=eq.true&order=name.asc&limit=100');
+    const sups = await sbFetch('kencal_supervisors?select=name&active=eq.true&limit=100');
     const locs = await sbFetch('kencal_supervisor_locations?select=supervisor,job_number&active=eq.true&limit=5000');
     if (sups && sups.length > 0) {
       // Reset and rebuild from Supabase
@@ -1874,7 +1966,7 @@ function reviewOrder() {
 
   Object.entries(supQtys).sort((a,b) => a[1].type.localeCompare(b[1].type)).forEach(([id, item]) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${id}</td><td>${item.name}</td><td><input type="number" class="qty-edit" value="${item.qty}" min="0.5" step="0.5" onchange="supQtys['${id}'].qty = parseFloat(this.value)||0"></td><td>${item.unit}</td>`;
+    tr.innerHTML = `<td>${id}</td><td>${item.name}</td><td><input type="number" class="qty-edit" value="${item.qty}" min="0.5" step="0.5" onchange="supQtys['${id}'].qty = parseFloat(this.value)||0"></td><td>${item.unitType||'Case'}</td><td>${item.unit}</td>`;
     tbody.appendChild(tr);
   });
 
@@ -2239,7 +2331,7 @@ function renderOrderCard(order, view) {
             <strong>${order.location_name}</strong>
             ${statusBadge} ${dsBadge}
           </div>
-          <div class="order-meta">Supervisor: ${order.supervisor} &nbsp;&nbsp; ${itemCount} items &nbsp;&nbsp; ${dateStr} &nbsp;&nbsp; Ref: ${order.order_ref}</div>
+          <div class="order-meta">Supervisor: ${order.supervisor} &nbsp;&nbsp; Job: <strong>${order.job_number}</strong> &nbsp;&nbsp; ${itemCount} items &nbsp;&nbsp; ${dateStr} &nbsp;&nbsp; Ref: ${order.order_ref}</div>
           ${order.notes ? `<div style="margin-top:5px;font-size:12px;color:#7a5a00;background:#fffbea;border:1px solid #f0d060;border-radius:5px;padding:4px 8px;display:inline-block"> <strong>Note:</strong> ${order.notes}</div>` : ''}
         </div>
         <span style="color:var(--gray);font-size:18px"></span>
@@ -2274,7 +2366,7 @@ async function updateDeliveryDate(id, date) {
 
 async function updateItemRebill(orderId, itemId, isRebill) {
   try {
-    const order = (window._maryOrders||[]).find(o=>o.id===orderId);
+    const order = (window._maryOrders || maryOrders || []).find(o=>o.id===orderId);
     if (!order || !order.items || !order.items[itemId]) return;
     order.items[itemId].rebill = isRebill;
     await sb.update('kencal_orders', { items: order.items }, `id=eq.${orderId}`);
@@ -2284,7 +2376,7 @@ async function updateItemRebill(orderId, itemId, isRebill) {
 async function updateOrderPO(orderId, poValue) {
   try {
     await sb.update('kencal_orders', { po_number: poValue }, `id=eq.${orderId}`);
-    const order = (window._maryOrders||[]).find(o=>o.id===orderId);
+    const order = (window._maryOrders || maryOrders || []).find(o=>o.id===orderId);
     if (order) order.po_number = poValue;
   } catch(e) { console.error('PO update failed:', e); }
 }
@@ -2576,21 +2668,18 @@ function buildImperialSummary() {
   const orders = (window._imperialOrders || []).filter(o => selectedOrdersForExport.has(o.id));
   const tbody = document.getElementById('imperialSummaryBody');
   tbody.innerHTML = '';
-
-  // Store per-item overrides: key = orderId_itemId, value = rebill bool
   window._imperialRebillOverrides = {};
 
+  // ── Build consolidated map: key = acct|itemId|isRebill ──────────────────
+  // Each entry: { acct, id, name, unit, unitTypes: Set, totalQty (by unitType), delivDate, isRebill, unmapped, locations[] }
+  const consolidated = {};
+
   orders.forEach(order => {
-    let acct;
-    let unmapped = false;
+    let acct, unmapped = false;
     if (order.is_dropship) {
       const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
-      if (!imperialAccts) {
-        unmapped = true;
-        acct = order.rebill ? '1754200' : '1754002';
-      } else {
-        acct = order.rebill && imperialAccts?.rebill ? imperialAccts.rebill : imperialAccts?.standard;
-      }
+      if (!imperialAccts) { unmapped = true; acct = order.rebill ? '1754200' : '1754002'; }
+      else { acct = order.rebill && imperialAccts.rebill ? imperialAccts.rebill : imperialAccts.standard; }
     } else {
       acct = order.rebill ? '1754200' : '1754002';
     }
@@ -2598,23 +2687,85 @@ function buildImperialSummary() {
 
     Object.entries(order.items || {}).forEach(([id, item]) => {
       const overrideKey = `${order.id}_${id}`;
-      window._imperialRebillOverrides[overrideKey] = order.rebill;
-      const tr = document.createElement('tr');
-      if (unmapped) tr.style.background = '#fff8e1';
-      tr.id = `impRow_${overrideKey}`;
-      tr.innerHTML = `
-        <td id="impAcct_${overrideKey}">${acct}${unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ NOT MAPPED</span>' : ''}</td>
-        <td>${order.location_name}</td>
-        <td>${id}</td>
-        <td>${item.name}</td>
-        <td>${item.qty}</td>
-        <td>${item.unit}</td>
-        <td>${delivDate || '<span style="color:var(--red)">! Set date</span>'}</td>
-        <td id="impRebill_${overrideKey}">${order.rebill ? '<span class="badge badge-pending">YES</span>' : 'No'}</td>
-        <td><button class="btn btn-outline btn-xs" onclick="toggleRebillOverride('${overrideKey}','${order.job_number}','${order.is_dropship}')">Flip</button></td>`;
-      tbody.appendChild(tr);
+      const isRebill = item.rebill !== undefined ? item.rebill : (order.rebill || false);
+      window._imperialRebillOverrides[overrideKey] = isRebill;
+
+      // Recalculate acct per-item based on rebill
+      let itemAcct = acct;
+      if (order.is_dropship) {
+        const imperialAccts = IMPERIAL_JOB_MAP[order.job_number];
+        if (imperialAccts) itemAcct = isRebill && imperialAccts.rebill ? imperialAccts.rebill : imperialAccts.standard;
+        else itemAcct = isRebill ? '1754200' : '1754002';
+      } else {
+        itemAcct = isRebill ? '1754200' : '1754002';
+      }
+
+      const unitType = item.unitType || 'Case';
+      const consolidateKey = `${itemAcct}|${id}|${isRebill ? 'rebill' : 'standard'}`;
+
+      if (!consolidated[consolidateKey]) {
+        consolidated[consolidateKey] = {
+          acct: itemAcct, id, name: item.name, unit: item.unit,
+          unitTypes: {}, totalQty: 0, delivDate, isRebill, unmapped,
+          locations: []
+        };
+      }
+      const entry = consolidated[consolidateKey];
+      entry.unitTypes[unitType] = (entry.unitTypes[unitType] || 0) + (parseFloat(item.qty) || 0);
+      entry.totalQty += (parseFloat(item.qty) || 0);
+      entry.locations.push(order.location_name);
+      if (delivDate && !entry.delivDate) entry.delivDate = delivDate;
     });
   });
+
+  // ── Render consolidated rows ─────────────────────────────────────────────
+  Object.entries(consolidated).forEach(([key, entry]) => {
+    const unitTypeKeys = Object.keys(entry.unitTypes);
+    const isMixed = unitTypeKeys.length > 1;
+
+    // Build qty display
+    let qtyDisplay;
+    if (isMixed) {
+      qtyDisplay = unitTypeKeys.map(ut => `${entry.unitTypes[ut]} ${ut}`).join(' + ');
+    } else {
+      qtyDisplay = `${entry.totalQty} ${unitTypeKeys[0] || 'Case'}`;
+    }
+
+    const tr = document.createElement('tr');
+
+    // Highlight: yellow for unmapped, orange for mixed units
+    if (isMixed) {
+      tr.style.background = '#fff0d0';
+      tr.style.outline = '2px solid #f59e0b';
+    } else if (entry.unmapped) {
+      tr.style.background = '#fff8e1';
+    }
+
+    const locTip = entry.locations.join(', ');
+    tr.innerHTML = `
+      <td>${entry.acct}${entry.unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ NOT MAPPED</span>' : ''}</td>
+      <td title="${locTip}" style="cursor:help">${entry.locations.length > 1 ? entry.locations.length + ' locations 🔍' : entry.locations[0]}</td>
+      <td>${entry.id}</td>
+      <td>${entry.name}</td>
+      <td><strong>${qtyDisplay}</strong>${isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ MIXED UNITS</span>' : ''}</td>
+      <td>${entry.unit}</td>
+      <td>${entry.delivDate || '<span style="color:var(--red)">! Set date</span>'}</td>
+      <td>${entry.isRebill ? '<span class="badge badge-pending">YES</span>' : 'No'}</td>
+      <td></td>`;
+    tbody.appendChild(tr);
+  });
+
+  // ── Mixed units legend ───────────────────────────────────────────────────
+  const hasMixed = Object.values(consolidated).some(e => Object.keys(e.unitTypes).length > 1);
+  const existing = document.getElementById('mixedUnitsLegend');
+  if (existing) existing.remove();
+  if (hasMixed) {
+    const legend = document.createElement('div');
+    legend.id = 'mixedUnitsLegend';
+    legend.style.cssText = 'background:#fff0d0;border:2px solid #f59e0b;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:8px;color:#7a4f00';
+    legend.innerHTML = '<strong>⚠️ Mixed Units detected</strong> — highlighted rows have the same item ordered in both Each and Case by different supervisors. Verify quantities before submitting to Imperial.';
+    tbody.parentElement.parentElement.insertBefore(legend, tbody.parentElement);
+  }
 
   document.getElementById('imperialSummary').classList.remove('hidden');
 }
@@ -2696,6 +2847,7 @@ function buildAdminPanel() {
   // Load pending location requests
   renderLocationRequests();
   populateBulkSupSelect();
+  populateRemoveLocSelect(false);
 
   // Supervisor list
   const tbody = document.getElementById('adminSupBody');
@@ -2963,6 +3115,163 @@ async function bulkAddProductToSupervisor() {
   document.getElementById('bulkItemId').value = '';
 }
 
+function updateSwapPreview() {
+  const scope = document.getElementById('swapScope').value;
+  document.getElementById('swapSupRow').style.display = scope === 'supervisor' ? 'block' : 'none';
+}
+
+function updateRemoveLocPreview() {
+  const sel = document.getElementById('removeLocSelect');
+  const job = sel.value;
+  const prev = document.getElementById('removeLocPreview');
+  if (!job) { prev.textContent = ''; return; }
+  const locName = LOCATION_NAMES[job] || job;
+  const productCount = locationProducts[job] ? Object.keys(locationProducts[job]).length : 0;
+  prev.textContent = locName + ' — ' + productCount + ' products will be removed.';
+}
+
+async function removeLocation() {
+  const sel = document.getElementById('removeLocSelect');
+  const job = sel.value;
+  const resultEl = document.getElementById('removeLocResult');
+  if (!job) { alert('Please select a location to remove.'); return; }
+  const locName = LOCATION_NAMES[job] || job;
+  const productCount = locationProducts[job] ? Object.keys(locationProducts[job]).length : 0;
+
+  const confirmed = window.confirm(
+    'Remove "' + locName + '" (Job ' + job + ')?\n\n' +
+    'This will delete ' + productCount + ' products assigned to this location.\n\n' +
+    'Order history and WinTeam data are NOT affected.\n\nThis cannot be undone.'
+  );
+  if (!confirmed) return;
+
+  showLoading('Removing location...');
+  resultEl.innerHTML = '';
+
+  try {
+    // Delete all products for this location
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}`,
+      { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!r.ok) throw new Error('Failed to delete products (HTTP ' + r.status + ')');
+
+    // Remove from local cache
+    delete locationProducts[job];
+
+    // Remove from LOCATION_NAMES and SUPERVISOR_LOCATIONS in memory
+    delete LOCATION_NAMES[job];
+    Object.keys(SUPERVISOR_LOCATIONS).forEach(function(sup) {
+      SUPERVISOR_LOCATIONS[sup] = SUPERVISOR_LOCATIONS[sup].filter(function(j) { return j !== job; });
+    });
+
+    hideLoading();
+    resultEl.innerHTML = '<span style="color:green">✓ ' + locName + ' removed successfully.</span>';
+
+    // Repopulate dropdown
+    sel.value = '';
+    document.getElementById('removeLocPreview').textContent = '';
+    populateRemoveLocSelect(true);
+
+  } catch(e) {
+    hideLoading();
+    resultEl.innerHTML = '<span style="color:red">Error: ' + e.message + '</span>';
+  }
+}
+
+function populateRemoveLocSelect(force) {
+  const sel = document.getElementById('removeLocSelect');
+  if (!sel) return;
+  if (!force && sel.options.length > 1) return;
+  sel.innerHTML = '<option value="">-- Select location --</option>';
+  Object.entries(LOCATION_NAMES).sort(function(a,b) { return a[1].localeCompare(b[1]); }).forEach(function(entry) {
+    const opt = document.createElement('option');
+    opt.value = entry[0];
+    const productCount = locationProducts[entry[0]] ? Object.keys(locationProducts[entry[0]]).length : 0;
+    opt.textContent = entry[1] + ' (Job ' + entry[0] + ') — ' + productCount + ' products';
+    sel.appendChild(opt);
+  });
+}
+
+async function swapProduct() {
+  const oldId   = document.getElementById('swapOldId').value.trim();
+  const newId   = document.getElementById('swapNewId').value.trim();
+  const newDesc = document.getElementById('swapNewDesc').value.trim();
+  const newUnit = document.getElementById('swapNewUnit').value.trim() || 'Case';
+  const newType = document.getElementById('swapNewType').value.trim() || 'Supply';
+  const scope   = document.getElementById('swapScope').value;
+  const supName = document.getElementById('swapSupSelect').value;
+  const resultEl = document.getElementById('swapResult');
+
+  if (!oldId) { alert('Please enter the old item number.'); return; }
+  if (!newId) { alert('Please enter the new item number.'); return; }
+  if (!newDesc) { alert('Please enter a description for the new item.'); return; }
+  if (oldId === newId) { alert('Old and new item numbers are the same.'); return; }
+  if (scope === 'supervisor' && !supName) { alert('Please select a supervisor.'); return; }
+
+  // Determine which jobs to scan
+  let jobsToScan;
+  if (scope === 'supervisor') {
+    jobsToScan = SUPERVISOR_LOCATIONS[supName] || [];
+  } else {
+    jobsToScan = Object.keys(locationProducts);
+  }
+
+  // Find jobs that actually have the old item
+  const jobsWithOld = jobsToScan.filter(j => locationProducts[j] && locationProducts[j][oldId]);
+
+  if (jobsWithOld.length === 0) {
+    alert('Item "' + oldId + '" not found in any of the selected locations.');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    'Swap "' + oldId + '" → "' + newId + '" (' + newDesc + ')\n' +
+    'Affects ' + jobsWithOld.length + ' location(s).\n\n' +
+    'This will ADD the new item and REMOVE the old item. Continue?'
+  );
+  if (!confirmed) return;
+
+  showLoading('Swapping product across ' + jobsWithOld.length + ' locations...');
+  resultEl.innerHTML = '';
+  let added = 0, removed = 0, failed = 0;
+
+  for (const job of jobsWithOld) {
+    try {
+      // Add new item
+      const addR = await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_products`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ job_number: job, item_number: newId, item_description: newDesc, unit: newUnit, item_type: newType, active: true })
+      });
+      if (addR.ok) {
+        if (!locationProducts[job]) locationProducts[job] = {};
+        locationProducts[job][newId] = { desc: newDesc, unit: newUnit, type: newType };
+        added++;
+      } else { failed++; continue; }
+
+      // Remove old item
+      const delR = await fetch(
+        `${SUPABASE_URL}/rest/v1/kencal_location_products?job_number=eq.${job}&item_number=eq.${encodeURIComponent(oldId)}`,
+        { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (delR.ok) {
+        delete locationProducts[job][oldId];
+        removed++;
+      } else { failed++; }
+    } catch(e) { failed++; }
+  }
+
+  hideLoading();
+  let msg = `Done: <strong>${added} added, ${removed} removed</strong>`;
+  if (failed) msg += `, <span style="color:red">${failed} failed</span>`;
+  resultEl.innerHTML = msg;
+
+  // Clear fields
+  ['swapOldId','swapNewId','swapNewDesc','swapNewType'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('swapNewUnit').value = 'Case';
+}
+
 async function bulkRemoveProductFromSupervisor() {
   const supName = document.getElementById('bulkRemoveSupSelect').value;
   const itemId = document.getElementById('bulkRemoveItemId').value.trim();
@@ -3005,7 +3314,7 @@ async function bulkRemoveProductFromSupervisor() {
 }
 
 function populateBulkSupSelect() {
-  ['bulkSupSelect', 'bulkRemoveSupSelect'].forEach(function(selId) {
+  ['bulkSupSelect', 'bulkRemoveSupSelect', 'swapSupSelect'].forEach(function(selId) {
     const sel = document.getElementById(selId);
     if (!sel || sel.options.length > 1) return;
     Object.keys(SUPERVISOR_LOCATIONS).sort().forEach(name => {
@@ -3015,12 +3324,14 @@ function populateBulkSupSelect() {
       opt.textContent = name + ' (' + count + ' locations)';
       sel.appendChild(opt);
     });
-    const previewId = selId === 'bulkSupSelect' ? 'bulkSupPreview' : 'bulkRemovePreview';
-    sel.addEventListener('change', function() {
-      const jobs = SUPERVISOR_LOCATIONS[this.value] || [];
-      const prev = document.getElementById(previewId);
-      if (prev) prev.textContent = jobs.length ? 'Locations: ' + jobs.map(j => LOCATION_NAMES[j]||j).join(', ') : '';
-    });
+    const previewId = selId === 'bulkSupSelect' ? 'bulkSupPreview' : selId === 'bulkRemoveSupSelect' ? 'bulkRemovePreview' : null;
+    if (previewId) {
+      sel.addEventListener('change', function() {
+        const jobs = SUPERVISOR_LOCATIONS[this.value] || [];
+        const prev = document.getElementById(previewId);
+        if (prev) prev.textContent = jobs.length ? 'Locations: ' + jobs.map(j => LOCATION_NAMES[j]||j).join(', ') : '';
+      });
+    }
   });
 }
 
@@ -3092,7 +3403,7 @@ function showMasterProductList() {
 }
 
 function printOrderCard(orderId) {
-  const order = (window._maryOrders || []).find(o => o.id === orderId);
+  const order = (window._maryOrders || maryOrders || []).find(o => o.id === orderId);
   if (!order) { alert('Order not found.'); return; }
   const items = order.items || {};
   const dateStr = new Date(order.created_at).toLocaleDateString('en-US',
@@ -3134,7 +3445,7 @@ function printOrderCard(orderId) {
 }
 
 function showAddItemPanel(orderId) {
-  const order = (window._maryOrders||[]).find(o=>o.id==orderId);
+  const order = (window._maryOrders || maryOrders || []).find(o=>o.id==orderId);
   if (!order) return;
   const products = locationProducts[order.job_number] || {};
   let opts = '<option value="">-- Select item --</option>';
@@ -3165,7 +3476,7 @@ function showAddItemPanel(orderId) {
 }
 
 async function confirmAddItem(orderId) {
-  const order = (window._maryOrders||[]).find(o=>o.id==orderId);
+  const order = (window._maryOrders || maryOrders || []).find(o=>o.id==orderId);
   if (!order) return;
   const sel = document.getElementById('addItemSelect_'+orderId);
   const itemId = sel ? sel.value : "";
@@ -3365,11 +3676,220 @@ let distCart = [];
 let allDistributions = [];
 let allWarehouseItems = {};
 
-document.addEventListener('click', function(e) {
-  if (e.target.dataset && e.target.dataset.tab === 'distribution') {
-    setTimeout(initDistTab, 100);
+function setDistMode(mode) {} // legacy stub - no longer used
+
+async function loadDeliverySheet() {
+  const container = document.getElementById('deliverySheetList');
+  container.innerHTML = '<div style="color:#888;font-size:13px">Loading...</div>';
+  try {
+    const orders = await sb.query('kencal_orders', {filter: {status: 'sent', is_dropship: false}, order: 'created_at.desc'});
+    if (!orders || orders.error || orders.length === 0) {
+      container.innerHTML = '<div class="alert alert-success">No pending warehouse deliveries.</div>';
+      return;
+    }
+    // Group by location
+    const byLocation = {};
+    orders.forEach(function(order) {
+      const loc = order.location_name;
+      if (!byLocation[loc]) byLocation[loc] = { job: order.job_number, items: {} };
+      Object.entries(order.items || {}).forEach(function(e) {
+        const id = e[0], item = e[1];
+        if (byLocation[loc].items[id]) {
+          byLocation[loc].items[id].qty += (parseFloat(item.qty) || 0);
+        } else {
+          byLocation[loc].items[id] = { name: item.name, qty: parseFloat(item.qty)||0, unit: item.unit, unitType: item.unitType||'Case' };
+        }
+      });
+    });
+
+    window._deliverySheetData = byLocation;
+
+    let html = '';
+    Object.keys(byLocation).sort().forEach(function(loc) {
+      const data = byLocation[loc];
+      const rows = Object.entries(data.items).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
+        const id = e[0], item = e[1];
+        return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee">' + id + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.name + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center"><strong>' + item.qty + '</strong></td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.unitType + '</td></tr>';
+      }).join('');
+      html += '<div style="margin-bottom:16px;border:1px solid var(--gray-light);border-radius:8px;overflow:hidden">' +
+        '<div style="background:var(--navy);color:white;padding:10px 14px;font-weight:700;font-size:14px">' + loc +
+        (data.job ? ' <span style="font-weight:400;font-size:12px;opacity:0.8">Job ' + data.job + '</span>' : '') + '</div>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="background:#f5f7fa"><th style="padding:6px 8px;text-align:left;font-size:12px">Item #</th>' +
+        '<th style="padding:6px 8px;text-align:left;font-size:12px">Description</th>' +
+        '<th style="padding:6px 8px;text-align:center;font-size:12px">Qty</th>' +
+        '<th style="padding:6px 8px;text-align:left;font-size:12px">Unit</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>';
+    });
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="alert alert-error">Could not load: ' + e.message + '</div>';
   }
-});
+}
+
+function printDeliverySheet() {
+  const data = window._deliverySheetData;
+  if (!data || Object.keys(data).length === 0) {
+    alert('Please click Refresh first to load the delivery sheet.');
+    return;
+  }
+  let body = '';
+  Object.keys(data).sort().forEach(function(loc) {
+    const d = data[loc];
+    const rows = Object.entries(d.items).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
+      const id = e[0], item = e[1];
+      return '<tr><td>' + id + '</td><td>' + item.name + '</td><td style="text-align:center"><strong>' + item.qty + '</strong></td><td>' + item.unitType + '</td><td style="width:80px">&nbsp;</td></tr>';
+    }).join('');
+    body += '<div class="loc-block">' +
+      '<div class="loc-header">' + loc + (d.job ? ' — Job ' + d.job : '') + '</div>' +
+      '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivered ✓</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  });
+  const css = 'body{font-family:Arial,sans-serif;padding:24px;color:#222}' +
+    'h2{margin:0 0 4px;color:#1a2e4a}.date{font-size:12px;color:#888;margin-bottom:20px}' +
+    '.loc-block{margin-bottom:24px;break-inside:avoid}' +
+    '.loc-header{background:#1a2e4a;color:white;padding:8px 12px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0}' +
+    'table{width:100%;border-collapse:collapse;border:1px solid #ddd;border-top:none}' +
+    'th{background:#f5f7fa;padding:6px 8px;text-align:left;font-size:12px;border-bottom:1px solid #ddd}' +
+    'td{padding:6px 8px;font-size:13px;border-bottom:1px solid #eee}' +
+    '@media print{button{display:none}}';
+  const html = '<!DOCTYPE html><html><head><title>Delivery Sheet</title><style>' + css + '</style></head><body>' +
+    '<h2>Warehouse Delivery Sheet</h2>' +
+    '<div class="date">Printed: ' + new Date().toLocaleDateString('en-US', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</div>' +
+    body +
+    '<scr' + 'ipt>window.onload=function(){window.print();}</scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank', 'width=820,height=950');
+  w.document.write(html);
+  w.document.close();
+}
+
+async function toggleWinTeamEntered(distId, checked) {
+  try {
+    await sb.update('kencal_distributions', { winteam_entered: checked }, 'id=eq.' + distId);
+    const entry = allDistributions.find(function(d) { return d.id === distId; });
+    if (entry) entry.winteam_entered = checked;
+  } catch(e) { console.error('WinTeam toggle failed:', e); }
+}
+
+function onDistOrderSelected() {
+  const orderId = parseInt(document.getElementById('distOrderSelect').value);
+  const order = (window._sentOrdersForDist||[]).find(function(o) { return o.id === orderId; });
+  if (!order) {
+    document.getElementById('distOrderLocArea').classList.add('hidden');
+    document.getElementById('distOrderItemsArea').classList.add('hidden');
+    return;
+  }
+  window._currentDistOrder = order;
+  const locSel = document.getElementById('distOrderLocSelect');
+  locSel.innerHTML = '<option value="">-- Select location --</option>';
+  const allLocs = Object.entries(LOCATION_NAMES).sort(function(a,b) { return a[1].localeCompare(b[1]); });
+  allLocs.forEach(function(entry) {
+    const opt = document.createElement('option');
+    opt.value = entry[0];
+    opt.textContent = entry[1] + ' (' + entry[0] + ')';
+    locSel.appendChild(opt);
+  });
+  const customOpt = document.createElement('option');
+  customOpt.value = '__custom__';
+  customOpt.textContent = 'Location not listed — type it in...';
+  locSel.appendChild(customOpt);
+  const dateInput = document.getElementById('distOrderDate');
+  if (!dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
+  document.getElementById('distOrderLocArea').classList.remove('hidden');
+  document.getElementById('distOrderItemsArea').classList.add('hidden');
+}
+
+function onDistOrderLocSelected() {
+  const val = document.getElementById('distOrderLocSelect').value;
+  const customArea = document.getElementById('distOrderCustomLocArea');
+  customArea.style.display = val === '__custom__' ? 'block' : 'none';
+  if (val) buildOrderDistItems();
+}
+
+function buildOrderDistItems() {
+  const order = window._currentDistOrder;
+  if (!order) return;
+  const tbody = document.getElementById('distOrderItemsBody');
+  tbody.innerHTML = '';
+  Object.entries(order.items || {}).forEach(function(entry) {
+    const id = entry[0], item = entry[1];
+    const tr = document.createElement('tr');
+    const safeName = (item.name||'').replace(/"/g, "'");
+    tr.innerHTML = '<td>' + id + '</td>' +
+      '<td>' + (item.name||'') + '</td>' +
+      '<td>' + item.qty + ' ' + (item.unitType||'Case') + '</td>' +
+      '<td><input type="number" class="dist-order-qty" data-id="' + id + '" data-name="' + safeName + '" data-unit="' + (item.unit||'') + '" data-unittype="' + (item.unitType||'Case') + '" min="0" step="0.5" placeholder="0" style="width:80px;padding:4px 8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"></td>' +
+      '<td>' + (item.unitType||'Case') + '</td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('distOrderItemsArea').classList.remove('hidden');
+}
+
+async function submitOrderDistribution() {
+  const order = window._currentDistOrder;
+  if (!order) return;
+  const locSelVal = document.getElementById('distOrderLocSelect').value;
+  const customLoc = document.getElementById('distOrderCustomLoc').value.trim();
+  const locName = locSelVal === '__custom__' ? customLoc : (LOCATION_NAMES[locSelVal] || locSelVal);
+  const locJob = locSelVal === '__custom__' ? null : locSelVal;
+  const date = document.getElementById('distOrderDate').value;
+  const resultEl = document.getElementById('distOrderResult');
+  if (!locName) { alert('Please select or enter a location.'); return; }
+  if (!date) { alert('Please select a date.'); return; }
+  const rows = document.querySelectorAll('.dist-order-qty');
+  const items = [];
+  rows.forEach(function(inp) {
+    const qty = parseFloat(inp.value) || 0;
+    if (qty > 0) items.push({ id: inp.dataset.id, name: inp.dataset.name, unit: inp.dataset.unit, unitType: inp.dataset.unittype, qty: qty });
+  });
+  if (items.length === 0) { alert('Please enter at least one quantity to deliver.'); return; }
+  showLoading('Logging ' + items.length + ' items...');
+  let hasError = false;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const result = await sb.insert('kencal_distributions', {
+      distribution_date: date,
+      job_number: locJob,
+      job_description: locName,
+      item_number: item.id,
+      item_description: item.name,
+      quantity: item.qty,
+      unit: item.unitType || item.unit || 'Case',
+      dest_type: 'order',
+      source_order_id: order.id,
+      source_order_ref: order.order_ref,
+      supervisor: order.supervisor,
+      status: locJob ? 'active' : 'pending',
+      winteam_entered: false,
+      logged_by: currentUser,
+      created_at: new Date().toISOString()
+    });
+    if (result && result.error) { hasError = true; console.error(result.error); }
+  }
+  hideLoading();
+  if (hasError) {
+    resultEl.innerHTML = '<span style="color:red">Some items may not have saved. Check the log.</span>';
+  } else {
+    resultEl.innerHTML = '<span style="color:green">✓ Logged ' + items.length + ' items for ' + locName + '. Select another location to continue distributing.</span>';
+    rows.forEach(function(inp) { inp.value = ''; });
+    document.getElementById('distOrderLocSelect').value = '';
+    document.getElementById('distOrderCustomLoc').value = '';
+    document.getElementById('distOrderItemsArea').classList.add('hidden');
+    document.getElementById('distOrderLocArea').classList.add('hidden');
+    loadDistributions();
+  }
+}
+
+function resetOrderDist() {
+  document.getElementById('distOrderSelect').value = '';
+  document.getElementById('distOrderLocArea').classList.add('hidden');
+  document.getElementById('distOrderItemsArea').classList.add('hidden');
+  document.getElementById('distOrderResult').innerHTML = '';
+  window._currentDistOrder = null;
+}
+
 
 function initDistTab() {
   const today = new Date().toISOString().split('T')[0];
@@ -3380,6 +3900,7 @@ function initDistTab() {
   populateDistSupervisors();
   buildWarehouseItemIndex();
   loadDistributions();
+  loadDeliverySheet();
 }
 
 function buildWarehouseItemIndex() {
@@ -3793,29 +4314,39 @@ function renderDistLog(distributions) {
     return;
   }
 
+  const isMary = currentRole === 'mary' || currentRole === 'admin';
   const rows = distributions.map(function(d) {
     const isPending = d.status === 'pending';
-    const typeLabel = d.dest_type === 'supervisor' ? 
-      '<span class="badge badge-warehouse">Supervisor</span>' : 
-      '<span class="badge badge-dropship">Job Site</span>';
-    const destination = d.dest_type === 'supervisor' && d.supervisor ? 
+    const isWTEntered = d.winteam_entered || false;
+    const typeLabel = d.dest_type === 'order'
+      ? '<span class="badge badge-dropship">From Order</span>'
+      : d.dest_type === 'supervisor'
+        ? '<span class="badge badge-warehouse">Supervisor</span>'
+        : '<span class="badge badge-dropship">Job Site</span>';
+    const destination = d.dest_type === 'supervisor' && d.supervisor ?
       d.supervisor + ' -> ' + d.job_description : d.job_description;
-    return '<tr style="' + (isPending ? 'background:var(--orange-light)' : '') + '">' +
+    const orderRef = d.source_order_ref ? '<br><span style="font-size:10px;color:#888">Order: ' + d.source_order_ref + '</span>' : '';
+    const rowBg = isWTEntered ? 'background:#f0fdf4' : isPending ? 'background:var(--orange-light)' : '';
+    const wtCell = isMary
+      ? '<td><input type="checkbox" ' + (isWTEntered ? 'checked' : '') + ' onchange="toggleWinTeamEntered(' + d.id + ', this.checked)" title="Mark as entered in WinTeam"> ' + (isWTEntered ? '<span style="color:green;font-size:11px">✓ Done</span>' : '<span style="color:#888;font-size:11px">Pending</span>') + '</td>'
+      : '';
+    return '<tr style="' + rowBg + '">' +
       '<td>' + d.distribution_date + '</td>' +
       '<td>' + typeLabel + '</td>' +
       '<td>' + (d.job_number || '<span style="color:var(--orange);font-weight:600">Pending</span>') + '</td>' +
-      '<td>' + destination + '</td>' +
+      '<td>' + destination + orderRef + '</td>' +
       '<td>' + d.item_number + '</td>' +
       '<td>' + d.item_description + '</td>' +
       '<td><strong>' + d.quantity + '</strong></td>' +
       '<td>' + d.unit + '</td>' +
       '<td>' + (d.notes || '') + '</td>' +
+      (isMary ? wtCell : '') +
       '<td><button class="btn btn-danger btn-xs" onclick="deleteDistribution(' + d.id + ')">X</button></td>' +
       '</tr>';
   }).join('');
 
   container.innerHTML = '<div style="overflow-x:auto"><table class="review-table" style="width:100%;min-width:900px">' +
-    '<thead><tr><th>Date</th><th>Type</th><th>Job #</th><th>Destination</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead>' +
+    '<thead><tr><th>Date</th><th>Type</th><th>Job #</th><th>Destination</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th>' + (isMary ? '<th>WinTeam</th>' : '') + '<th></th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>';
 }
 
