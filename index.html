@@ -3551,7 +3551,6 @@ function printOrderCard(orderId) {
       + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.name + '</td>'
       + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">' + item.qty + '</td>'
       + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.unitType||'Case') + '</td>'
-      + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.unit||'') + '</td>'
       + '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.rebill?'Rebill':'Standard') + '</td>'
       + '</tr>';
   });
@@ -3571,7 +3570,7 @@ function printOrderCard(orderId) {
     + (order.po_number ? '<div class="po">PO: ' + order.po_number + '</div>' : '')
     + (order.notes ? '<div class="note">Notes: ' + order.notes + '</div>' : '')
     + '<div class="divider"></div>'
-    + '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Unit</th><th>Rebill</th></tr></thead>'
+    + '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Rebill</th></tr></thead>'
     + '<tbody>' + trows + '</tbody></table>'
     + '<scr'+'ipt>window.onload=function(){window.print();}</scr'+'ipt></body></html>';
   const w = window.open('','_blank','width=820,height=950');
