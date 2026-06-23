@@ -3579,40 +3579,69 @@ function printOrderCard(orderId) {
   w.document.close();
 }
 
+function closeAddItemModal(orderId) {
+  var m = document.getElementById('addItemModal_' + orderId);
+  if (m) m.remove();
+}
+
 function showAddItemPanel(orderId) {
-  const order = (window._maryOrders || maryOrders || []).find(o => String(o.id) === String(orderId));
+  const order = (window._maryOrders || maryOrders || []).find(function(o) { return String(o.id) === String(orderId); });
   if (!order) { alert('Could not find order. Please refresh and try again.'); return; }
-  let products = locationProducts[order.job_number] || {};
-  if (Object.keys(products).length === 0) {
-    Object.values(locationProducts).forEach(function(lp) {
-      Object.entries(lp).forEach(function(e) { if (!products[e[0]]) products[e[0]] = e[1]; });
-    });
-  }
-  let opts = '<option value="">-- Select item --</option>';
-  Object.entries(products).sort((a,b)=>a[1].desc.localeCompare(b[1].desc)).forEach(function(e){
-    const id=e[0], info=e[1];
-    opts += '<option value="'+id+'" data-name="'+(info.desc||'')+'" data-unit="'+(info.unit||'')+'">'+(info.desc||id)+' ('+id+')</option>';
+
+  // Build from full master catalog
+  const master = {};
+  Object.values(locationProducts).forEach(function(lp) {
+    Object.entries(lp).forEach(function(e) { if (!master[e[0]]) master[e[0]] = e[1]; });
   });
-  var ex = document.getElementById('addItemModal_'+orderId); if(ex) ex.remove();
+
+  var ex = document.getElementById('addItemModal_' + orderId);
+  if (ex) ex.remove();
+
   var modal = document.createElement('div');
-  modal.id = 'addItemModal_'+orderId;
+  modal.id = 'addItemModal_' + orderId;
   modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
-  modal.innerHTML = '<div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">'
-    + '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:16px">Add Item to Order</div>'
-    + '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Item</label>'
-    + '<select id="addItemSelect_'+orderId+'" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">'+opts+'</select></div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
-    + '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Quantity</label>'
-    + '<input type="number" id="addItemQty_'+orderId+'" min="0.5" step="0.5" placeholder="0" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box"></div>'
-    + '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Each or Case</label>'
-    + '<select id="addItemUnit_'+orderId+'" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"><option value="Case">Case</option><option value="Each">Each</option></select></div></div>'
-    + '<div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Rebill?</label>'
-    + '<select id="addItemRebill_'+orderId+'" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"><option value="standard">Standard</option><option value="rebill">Rebill</option></select></div>'
-    + '<div style="display:flex;gap:8px">'
-    + '<button class="btn btn-green" onclick="confirmAddItem('+orderId+')" style="flex:1">Add Item</button>'
-    + '<button class="btn btn-outline" onclick="(function(){var m=document.getElementById(\'addItemModal_\'+orderId);if(m)m.remove();})()" style="flex:1">Cancel</button>'
-    + '</div></div>';
+
+  // Build select options
+  var opts = '<option value="">-- Select item --</option>';
+  Object.entries(master).sort(function(a,b) { return a[1].desc.localeCompare(b[1].desc); }).forEach(function(e) {
+    var id = e[0], info = e[1];
+    var vendor = (info.vendor && info.vendor !== 'Imperial') ? ' [' + info.vendor + ']' : '';
+    opts += '<option value="' + id + '" data-name="' + (info.desc||'').replace(/"/g,"'") + '" data-unit="' + (info.unit||'') + '" data-vendor="' + (info.vendor||'Imperial') + '">' + (info.desc||id) + vendor + ' (' + id + ')</option>';
+  });
+
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:white;border-radius:12px;padding:24px;width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.2)';
+
+  inner.innerHTML = '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Add Item to Order</div>' +
+    '<div style="font-size:11px;color:#888;margin-bottom:14px">Full catalog — ' + Object.keys(master).length + ' items</div>' +
+    '<div style="margin-bottom:12px">' +
+      '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Item</label>' +
+      '<select id="addItemSelect_OID" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">' + opts + '</select>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+      '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Quantity</label>' +
+      '<input type="number" id="addItemQty_OID" min="0.5" step="0.5" placeholder="0" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+      '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Each or Case</label>' +
+      '<select id="addItemUnit_OID" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"><option value="Case">Case</option><option value="Each">Each</option></select></div>' +
+    '</div>' +
+    '<div style="margin-bottom:16px">' +
+      '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Rebill?</label>' +
+      '<select id="addItemRebill_OID" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px"><option value="standard">Standard</option><option value="rebill">Rebill</option></select>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px">' +
+      '<button id="addItemConfirmBtn_OID" class="btn btn-green" style="flex:1">Add Item</button>' +
+      '<button id="addItemCancelBtn_OID" class="btn btn-outline" style="flex:1">Cancel</button>' +
+    '</div>';
+
+  // Replace OID placeholder with actual orderId
+  inner.innerHTML = inner.innerHTML.replace(/OID/g, orderId);
+
+  // Wire up buttons via addEventListener (safe, no escaping issues)
+  modal.appendChild(inner);
   document.body.appendChild(modal);
+
+  document.getElementById('addItemConfirmBtn_' + orderId).addEventListener('click', function() { confirmAddItem(orderId); });
+  document.getElementById('addItemCancelBtn_' + orderId).addEventListener('click', function() { closeAddItemModal(orderId); });
 }
 
 async function confirmAddItem(orderId) {
