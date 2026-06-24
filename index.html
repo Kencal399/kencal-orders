@@ -2336,6 +2336,9 @@ function renderOrderCard(order, view) {
         '<div class="flex-gap mt-8">' + reviewedBtn + approveBtn +
         '<button class="btn btn-outline btn-sm" onclick="printOrderCard(' + order.id + ')"> Print</button>' +
         '<button class="btn btn-outline btn-sm" onclick="showAddItemPanel(' + order.id + ')">+ Add Item</button>' +
+        '<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;margin-left:4px">' +
+        '<input type="checkbox" ' + (order.entered_in_imperial ? 'checked' : '') + ' onchange="toggleEnteredInImperial(' + order.id + ', this.checked)" style="width:14px;height:14px">' +
+        '<span style="color:' + (order.entered_in_imperial ? 'green' : '#888') + '">' + (order.entered_in_imperial ? '✓ Entered in Imperial' : 'Entered in Imperial') + '</span></label>' +
         '<button class="btn btn-danger btn-xs" onclick="deleteOrder(' + order.id + ')">Delete</button>' +
         '</div>';
     }
@@ -2380,6 +2383,15 @@ async function updateDeliveryDate(id, date) {
   await sb.update('kencal_orders', {delivery_date: date, updated_at: new Date().toISOString()}, {id});
   const order = maryOrders.find(o => String(o.id) === String(id));
   if (order) order.delivery_date = date;
+}
+
+async function toggleEnteredInImperial(orderId, checked) {
+  try {
+    const order = maryOrders.find(o => String(o.id) === String(orderId));
+    if (order) order.entered_in_imperial = checked;
+    await sb.update('kencal_orders', { entered_in_imperial: checked, updated_at: new Date().toISOString() }, { id: orderId });
+    loadMaryOrders();
+  } catch(e) { console.error('Failed to update entered_in_imperial:', e); }
 }
 
 async function updateItemRebill(orderId, itemId, isRebill) {
@@ -2677,7 +2689,7 @@ async function loadImperialOrders() {
   showLoading('Loading approved orders...');
   try {
     const orders = await sb.query('kencal_orders', {order: 'created_at.desc'});
-    const approved = (orders || []).filter(o => o.status === 'approved');
+    const approved = (orders || []).filter(o => o.status === 'approved' && !o.entered_in_imperial);
     renderImperialOrders(approved);
   } catch(e) {
     document.getElementById('imperialOrdersList').innerHTML = `<div class="alert alert-error">Could not load orders: ${e.message}</div>`;
@@ -2689,7 +2701,7 @@ function renderImperialOrders(orders) {
   selectedOrdersForExport.clear();
   const container = document.getElementById('imperialOrdersList');
   if (!orders || orders.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No approved orders ready for export.<br>Approve orders in the Order Review tab first.</p></div>';
+    container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No approved orders ready for export.<br>Approve orders in the Order Review tab first.<br><span style="font-size:11px;color:#aaa">Orders already marked "Entered in Imperial" are excluded.</span></p></div>';
     document.getElementById('imperialSummary').classList.add('hidden');
     return;
   }
