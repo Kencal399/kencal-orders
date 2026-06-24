@@ -548,7 +548,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         </div>
         <div id="missingLocationSection" class="hidden">
           <div style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:12px 14px;margin-top:8px">
-            <div style="font-size:13px;font-weight:600;color:#7a5a00;margin-bottom:8px">📍 Request a missing location</div>
+            <div style="font-size:13px;font-weight:600;color:#7a5a00;margin-bottom:8px"> Request a missing location</div>
             <div style="display:flex;flex-direction:column;gap:8px">
               <input type="text" id="missingLocName" placeholder="Location name *" style="padding:8px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px">
               <input type="text" id="missingLocAddress" placeholder="Address" style="padding:8px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px">
@@ -558,7 +558,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                 <button class="btn btn-primary" onclick="submitMissingLocationRequest()" style="flex:1">Send Request to Admin</button>
                 <button class="btn btn-outline" onclick="cancelMissingLocation()">Cancel</button>
               </div>
-              <div id="missingLocConfirm" style="display:none;color:#1a6e2a;font-size:12px;font-weight:600">✓ Request sent! Rick or Mary will add this location shortly.</div>
+              <div id="missingLocConfirm" style="display:none;color:#1a6e2a;font-size:12px;font-weight:600"> Request sent! Rick or Mary will add this location shortly.</div>
             </div>
           </div>
         </div>
@@ -636,7 +636,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       </select>
       <button class="btn btn-outline btn-sm" onclick="switchTab('history')"> View History</button>
       <button class="btn btn-danger btn-sm" onclick="archiveSentOrders()"> Archive Sent</button>
-      <button class="btn btn-green btn-sm" onclick="exportProductsCSVForMary()">⬇ Export Products</button>
+      <button class="btn btn-green btn-sm" onclick="exportProductsCSVForMary()"> Export Products</button>
     </div>
 
     <div id="maryOrdersList"></div>
@@ -843,7 +843,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
             <tbody id="distCartBody"></tbody>
           </table>
           <div class="flex-gap">
-            <button class="btn btn-green" onclick="logDistribution()">✓ Submit Stock Log</button>
+            <button class="btn btn-green" onclick="logDistribution()"> Submit Stock Log</button>
             <button class="btn btn-outline" onclick="resetDistForm()">Clear All</button>
           </div>
         </div>
@@ -901,14 +901,14 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <div class="divider"></div>
       <div id="imperialSummary" class="hidden">
         <div class="card-title">Order Summary</div>
-        <p style="font-size:12px;color:#666;margin-bottom:10px">Review account numbers below. Items highlighted in <span style="background:#fff8e1;padding:1px 6px;border-radius:3px">yellow</span> have no Imperial account mapped yet — they will go to the bulk warehouse account. Use the <strong>Override</strong> toggle to flip individual items between rebill and non-rebill.</p>
+        <p style="font-size:12px;color:#666;margin-bottom:10px">Review account numbers below. Items highlighted in <span style="background:#fff8e1;padding:1px 6px;border-radius:3px">yellow</span> have no Imperial account mapped yet -- they will go to the bulk warehouse account. Use the <strong>Override</strong> toggle to flip individual items between rebill and non-rebill.</p>
         <table class="review-table" id="imperialSummaryTable">
           <thead><tr><th>Ship To Acct</th><th>Location</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivery Date</th><th>Rebill</th><th>Override</th></tr></thead>
           <tbody id="imperialSummaryBody"></tbody>
         </table>
         <div class="flex-gap mt-12">
           <button class="btn btn-green" onclick="exportImperialCSV()"> Download Imperial CSV</button>
-          <button class="btn btn-outline" onclick="markOrdersSent()">✓ Mark as Sent to Imperial</button>
+          <button class="btn btn-outline" onclick="markOrdersSent()"> Mark as Sent to Imperial</button>
         </div>
       </div>
     </div>
@@ -920,7 +920,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 
     <!-- Pending Location Requests -->
     <div class="card" id="adminRequestsCard" style="border-color:#f0b429;margin-bottom:16px">
-      <div class="card-title" style="color:#7a5a00">📍 Pending Location Requests</div>
+      <div class="card-title" style="color:#7a5a00"> Pending Location Requests</div>
       <div id="adminLocationRequests"><p style="font-size:13px;color:#888">Loading...</p></div>
     </div>
 
@@ -990,7 +990,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
             <option value="">-- Select location --</option>
           </select>
         </div>
-        <button class="btn btn-outline btn-sm" onclick="showMasterProductList()">📋 View Master Product List</button>
+        <button class="btn btn-outline btn-sm" onclick="showMasterProductList()"> View Master Product List</button>
       </div>
       <div id="adminProductsList" style="max-height:350px;overflow-y:auto;margin-bottom:12px"></div>
       <div class="divider"></div>
@@ -1118,9 +1118,9 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     <div id="masterProductModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
       <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div style="font-size:16px;font-weight:700;color:var(--navy)">📋 Master Product List</div>
+          <div style="font-size:16px;font-weight:700;color:var(--navy)"> Master Product List</div>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-green btn-sm" onclick="exportAllProductsCSV()">⬇ Export CSV</button>
+            <button class="btn btn-green btn-sm" onclick="exportAllProductsCSV()"> Export CSV</button>
             <button class="btn btn-outline btn-sm" onclick="document.getElementById('masterProductModal').style.display='none'">Close</button>
           </div>
         </div>
@@ -1275,7 +1275,7 @@ const SUPERVISOR_LOCATIONS = {
 // Warehouse bulk orders always use: standard=1754002, rebill=1754200
 // 399 Knollwood building itself: standard=1754016, rebill=1754160
 const IMPERIAL_JOB_MAP = {
-  // ── CONFIRMED MAPPINGS ──────────────────────────────────────
+  //  CONFIRMED MAPPINGS 
   "10050":  {"standard":"1754004","rebill":"1754400"},  // 480 North Broadway, Yonkers
   "10850":  {"standard":"1754015","rebill":"1754150"},  // Securitas-Diebold, 3 Westchester Plaza
   "11170":  {"standard":"1754026","rebill":"1754260"},  // Greenburgh Eleven UFSD
@@ -1322,7 +1322,7 @@ const IMPERIAL_JOB_MAP = {
   "51725":  {"standard":"1754853","rebill":"1754854"},  // 1 Station Plaza, Stamford
   "11240":  {"standard":"1754223","rebill":"1754622"},  // 500 White Plains Road, Tarrytown
 
-  // ── NOT YET MAPPED — will use bulk warehouse account ────────
+  //  NOT YET MAPPED -- will use bulk warehouse account 
   // 10075, 10175, 11150, 11220, 20400, 20600, 21200, 23400,
   // 23720, 30125, 30650, 30720, 30730, 30800, 40100, 40101,
   // 40500, 40600, 45625, 50550, 50775, 51050, 51300, 51530,
@@ -1538,7 +1538,7 @@ function switchTab(tabId) {
 }
 
 // ===========================================================
-// LOAD INITIAL DATA — everything from Supabase
+// LOAD INITIAL DATA -- everything from Supabase
 // ===========================================================
 async function submitMissingLocationRequest() {
   const name = document.getElementById('missingLocName').value.trim();
@@ -1597,12 +1597,12 @@ async function renderLocationRequests() {
     <div style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:10px 14px;margin-bottom:8px">
       <div style="font-size:13px;font-weight:600">${r.location_name}</div>
       <div style="font-size:12px;color:#555;margin-top:3px">
-        ${r.address ? '📍 ' + r.address + '<br>' : ''}
+        ${r.address ? ' ' + r.address + '<br>' : ''}
         ${r.job_number ? 'Job #: ' + r.job_number + '<br>' : ''}
         ${r.notes ? 'Notes: ' + r.notes + '<br>' : ''}
         Requested by: <b>${r.supervisor}</b> &nbsp;|&nbsp; ${new Date(r.created_at).toLocaleDateString()}
       </div>
-      <button class="btn btn-outline btn-xs" style="margin-top:6px" onclick="dismissLocationRequest(${i})">✓ Dismiss (after adding to system)</button>
+      <button class="btn btn-outline btn-xs" style="margin-top:6px" onclick="dismissLocationRequest(${i})"> Dismiss (after adding to system)</button>
     </div>`).join('');
 }
 
@@ -1824,7 +1824,7 @@ function onSupNameChange() {
   // Always add "My location isn't listed" at the bottom
   const missingOpt = document.createElement('option');
   missingOpt.value = '__missing__';
-  missingOpt.textContent = '📍 My location isn\'t listed...';
+  missingOpt.textContent = ' My location isn\'t listed...';
   locSel.appendChild(missingOpt);
 
   if (currentRole === 'supervisor') {
@@ -2185,19 +2185,19 @@ async function analyzeOrderFlags(order) {
   });
 
   if (!hasAnyHistory && Object.keys(currentItems).length > 0) {
-    flags.push({ type: 'yellow', msg: '⚠️ No order history found for this location — treating all items as new.' });
+    flags.push({ type: 'yellow', msg: '(!) No order history found for this location -- treating all items as new.' });
     Object.keys(currentItems).forEach(id => { itemFlags[id] = 'new'; });
     return { flags, itemFlags };
   }
 
   if (redCount > 0) {
-    flags.push({ type: 'red', msg: `🚩 ${redCount} item${redCount>1?'s':''} ordered significantly higher than usual. Review quantities highlighted in red below.` });
+    flags.push({ type: 'red', msg: ` ${redCount} item${redCount>1?'s':''} ordered significantly higher than usual. Review quantities highlighted in red below.` });
   }
   if (yellowCount > 0) {
-    flags.push({ type: 'yellow', msg: `⚠️ ${yellowCount} item${yellowCount>1?'s':''} have no order history for this location — verify before sending to Imperial.` });
+    flags.push({ type: 'yellow', msg: `(!) ${yellowCount} item${yellowCount>1?'s':''} have no order history for this location -- verify before sending to Imperial.` });
   }
   if (redCount === 0 && yellowCount === 0) {
-    flags.push({ type: 'green', msg: `✅ All quantities look normal based on 2025–2026 order history.` });
+    flags.push({ type: 'green', msg: ` All quantities look normal based on 20252026 order history.` });
   }
 
   return { flags, itemFlags };
@@ -2248,10 +2248,10 @@ function injectOrderFlags(orderId, flags, itemFlags) {
         // Add inline label
         const qtyCell = row.querySelectorAll('td')[2];
         if (qtyCell && flagType === 'high') {
-          qtyCell.innerHTML += ' <span style="color:#e53e3e;font-size:11px;font-weight:700">▲ HIGH</span>';
+          qtyCell.innerHTML += ' <span style="color:#e53e3e;font-size:11px;font-weight:700"> HIGH</span>';
         }
         if (qtyCell && flagType === 'new') {
-          qtyCell.innerHTML += ' <span style="color:#d97706;font-size:11px;font-weight:700">★ NEW</span>';
+          qtyCell.innerHTML += ' <span style="color:#d97706;font-size:11px;font-weight:700"> NEW</span>';
         }
       }
     });
@@ -2338,7 +2338,7 @@ function renderOrderCard(order, view) {
         '<button class="btn btn-outline btn-sm" onclick="showAddItemPanel(' + order.id + ')">+ Add Item</button>' +
         '<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;margin-left:4px">' +
         '<input type="checkbox" ' + (order.entered_in_imperial ? 'checked' : '') + ' onchange="toggleEnteredInImperial(' + order.id + ', this.checked)" style="width:14px;height:14px">' +
-        '<span style="color:' + (order.entered_in_imperial ? 'green' : '#888') + '">' + (order.entered_in_imperial ? '✓ Entered in Imperial' : 'Entered in Imperial') + '</span></label>' +
+        '<span style="color:' + (order.entered_in_imperial ? 'green' : '#888') + '">' + (order.entered_in_imperial ? ' Entered in Imperial' : 'Entered in Imperial') + '</span></label>' +
         '<button class="btn btn-danger btn-xs" onclick="deleteOrder(' + order.id + ')">Delete</button>' +
         '</div>';
     }
@@ -2760,7 +2760,7 @@ function buildImperialSummary() {
   tbody.innerHTML = '';
   window._imperialRebillOverrides = {};
 
-  // ── Build consolidated map: key = acct|itemId|isRebill ──────────────────
+  //  Build consolidated map: key = acct|itemId|isRebill 
   // Each entry: { acct, id, name, unit, unitTypes: Set, totalQty (by unitType), delivDate, isRebill, unmapped, locations[] }
   const consolidated = {};
 
@@ -2808,7 +2808,7 @@ function buildImperialSummary() {
     });
   });
 
-  // ── Render consolidated rows ─────────────────────────────────────────────
+  //  Render consolidated rows 
   Object.entries(consolidated).forEach(([key, entry]) => {
     const unitTypeKeys = Object.keys(entry.unitTypes);
     const isMixed = unitTypeKeys.length > 1;
@@ -2833,11 +2833,11 @@ function buildImperialSummary() {
 
     const locTip = entry.locations.join(', ');
     tr.innerHTML = `
-      <td>${entry.acct}${entry.unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ NOT MAPPED</span>' : ''}</td>
-      <td title="${locTip}" style="cursor:help">${entry.locations.length > 1 ? entry.locations.length + ' locations 🔍' : entry.locations[0]}</td>
+      <td>${entry.acct}${entry.unmapped ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) NOT MAPPED</span>' : ''}</td>
+      <td title="${locTip}" style="cursor:help">${entry.locations.length > 1 ? entry.locations.length + ' locations ' : entry.locations[0]}</td>
       <td>${entry.id}</td>
       <td>${entry.name}</td>
-      <td><strong>${qtyDisplay}</strong>${isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">⚠️ MIXED UNITS</span>' : ''}</td>
+      <td><strong>${qtyDisplay}</strong>${isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) MIXED UNITS</span>' : ''}</td>
       <td>${entry.unit}</td>
       <td>${entry.delivDate || '<span style="color:var(--red)">! Set date</span>'}</td>
       <td>${entry.isRebill ? '<span class="badge badge-pending">YES</span>' : 'No'}</td>
@@ -2845,7 +2845,7 @@ function buildImperialSummary() {
     tbody.appendChild(tr);
   });
 
-  // ── Mixed units legend ───────────────────────────────────────────────────
+  //  Mixed units legend 
   const hasMixed = Object.values(consolidated).some(e => Object.keys(e.unitTypes).length > 1);
   const existing = document.getElementById('mixedUnitsLegend');
   if (existing) existing.remove();
@@ -2853,7 +2853,7 @@ function buildImperialSummary() {
     const legend = document.createElement('div');
     legend.id = 'mixedUnitsLegend';
     legend.style.cssText = 'background:#fff0d0;border:2px solid #f59e0b;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:8px;color:#7a4f00';
-    legend.innerHTML = '<strong>⚠️ Mixed Units detected</strong> — highlighted rows have the same item ordered in both Each and Case by different supervisors. Verify quantities before submitting to Imperial.';
+    legend.innerHTML = '<strong>(!) Mixed Units detected</strong> -- highlighted rows have the same item ordered in both Each and Case by different supervisors. Verify quantities before submitting to Imperial.';
     tbody.parentElement.parentElement.insertBefore(legend, tbody.parentElement);
   }
 
@@ -3000,7 +3000,7 @@ function filterAdminLocations() {
   resultBox.innerHTML = results.map(r =>
     `<div style="padding:3px 0;border-bottom:1px solid #cce0f5">
       <b>${r.locName}</b> <span style="color:#888;font-size:11px">(Job #${r.job})</span><br>
-      <span style="color:#1F4E79;font-size:12px">👤 ${r.supervisors.length ? r.supervisors.join(', ') : '<i style="color:#999">No supervisor assigned</i>'}</span>
+      <span style="color:#1F4E79;font-size:12px"> ${r.supervisors.length ? r.supervisors.join(', ') : '<i style="color:#999">No supervisor assigned</i>'}</span>
     </div>`
   ).join('');
   resultBox.style.display = 'block';
@@ -3136,7 +3136,7 @@ async function loadAdminProducts() {
   Object.entries(products).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).forEach(([id, info]) => {
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-light);font-size:13px;gap:8px';
-    div.innerHTML = `<div><strong>${id}</strong> — ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
+    div.innerHTML = `<div><strong>${id}</strong> -- ${info.desc} <span style="color:var(--gray)">(${info.unit} ${info.type || ''})</span></div><div style="display:flex;gap:4px"></div>`;
     const btnDiv = div.querySelector('div:last-child');
 
     const editBtn = document.createElement('button');
@@ -3217,7 +3217,7 @@ function updateRemoveLocPreview() {
   if (!job) { prev.textContent = ''; return; }
   const locName = LOCATION_NAMES[job] || job;
   const productCount = locationProducts[job] ? Object.keys(locationProducts[job]).length : 0;
-  prev.textContent = locName + ' — ' + productCount + ' products will be removed.';
+  prev.textContent = locName + ' -- ' + productCount + ' products will be removed.';
 }
 
 async function removeLocation() {
@@ -3256,7 +3256,7 @@ async function removeLocation() {
     });
 
     hideLoading();
-    resultEl.innerHTML = '<span style="color:green">✓ ' + locName + ' removed successfully.</span>';
+    resultEl.innerHTML = '<span style="color:green"> ' + locName + ' removed successfully.</span>';
 
     // Repopulate dropdown
     sel.value = '';
@@ -3278,7 +3278,7 @@ function populateRemoveLocSelect(force) {
     const opt = document.createElement('option');
     opt.value = entry[0];
     const productCount = locationProducts[entry[0]] ? Object.keys(locationProducts[entry[0]]).length : 0;
-    opt.textContent = entry[1] + ' (Job ' + entry[0] + ') — ' + productCount + ' products';
+    opt.textContent = entry[1] + ' (Job ' + entry[0] + ') -- ' + productCount + ' products';
     sel.appendChild(opt);
   });
 }
@@ -3316,7 +3316,7 @@ async function swapProduct() {
   }
 
   const confirmed = window.confirm(
-    'Swap "' + oldId + '" → "' + newId + '" (' + newDesc + ')\n' +
+    'Swap "' + oldId + '" -> "' + newId + '" (' + newDesc + ')\n' +
     'Affects ' + jobsWithOld.length + ' location(s).\n\n' +
     'This will ADD the new item and REMOVE the old item. Continue?'
   );
@@ -3624,7 +3624,7 @@ function showAddItemPanel(orderId) {
   inner.style.cssText = 'background:white;border-radius:12px;padding:24px;width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.2)';
 
   inner.innerHTML = '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Add Item to Order</div>' +
-    '<div style="font-size:11px;color:#888;margin-bottom:14px">Full catalog — ' + Object.keys(master).length + ' items</div>' +
+    '<div style="font-size:11px;color:#888;margin-bottom:14px">Full catalog -- ' + Object.keys(master).length + ' items</div>' +
     '<div style="margin-bottom:12px">' +
       '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Item</label>' +
       '<select id="addItemSelect_OID" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">' + opts + '</select>' +
@@ -3925,8 +3925,8 @@ function printDeliverySheet() {
       return '<tr><td>' + id + '</td><td>' + item.name + '</td><td style="text-align:center"><strong>' + item.qty + '</strong></td><td>' + item.unitType + '</td><td style="width:80px">&nbsp;</td></tr>';
     }).join('');
     body += '<div class="loc-block">' +
-      '<div class="loc-header">' + loc + (d.job ? ' — Job ' + d.job : '') + '</div>' +
-      '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivered ✓</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      '<div class="loc-header">' + loc + (d.job ? ' -- Job ' + d.job : '') + '</div>' +
+      '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivered </th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   });
   const css = 'body{font-family:Arial,sans-serif;padding:24px;color:#222}' +
     'h2{margin:0 0 4px;color:#1a2e4a}.date{font-size:12px;color:#888;margin-bottom:20px}' +
@@ -3974,7 +3974,7 @@ function onDistOrderSelected() {
   });
   const customOpt = document.createElement('option');
   customOpt.value = '__custom__';
-  customOpt.textContent = 'Location not listed — type it in...';
+  customOpt.textContent = 'Location not listed -- type it in...';
   locSel.appendChild(customOpt);
   const dateInput = document.getElementById('distOrderDate');
   if (!dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
@@ -4053,7 +4053,7 @@ async function submitOrderDistribution() {
   if (hasError) {
     resultEl.innerHTML = '<span style="color:red">Some items may not have saved. Check the log.</span>';
   } else {
-    resultEl.innerHTML = '<span style="color:green">✓ Logged ' + items.length + ' items for ' + locName + '. Select another location to continue distributing.</span>';
+    resultEl.innerHTML = '<span style="color:green"> Logged ' + items.length + ' items for ' + locName + '. Select another location to continue distributing.</span>';
     rows.forEach(function(inp) { inp.value = ''; });
     document.getElementById('distOrderLocSelect').value = '';
     document.getElementById('distOrderCustomLoc').value = '';
@@ -4509,7 +4509,7 @@ function renderDistLog(distributions) {
     const orderRef = d.source_order_ref ? '<br><span style="font-size:10px;color:#888">Order: ' + d.source_order_ref + '</span>' : '';
     const rowBg = isWTEntered ? 'background:#f0fdf4' : isPending ? 'background:var(--orange-light)' : '';
     const wtCell = isMary
-      ? '<td><input type="checkbox" ' + (isWTEntered ? 'checked' : '') + ' onchange="toggleWinTeamEntered(' + d.id + ', this.checked)" title="Mark as entered in WinTeam"> ' + (isWTEntered ? '<span style="color:green;font-size:11px">✓ Done</span>' : '<span style="color:#888;font-size:11px">Pending</span>') + '</td>'
+      ? '<td><input type="checkbox" ' + (isWTEntered ? 'checked' : '') + ' onchange="toggleWinTeamEntered(' + d.id + ', this.checked)" title="Mark as entered in WinTeam"> ' + (isWTEntered ? '<span style="color:green;font-size:11px"> Done</span>' : '<span style="color:#888;font-size:11px">Pending</span>') + '</td>'
       : '';
     return '<tr style="' + rowBg + '">' +
       '<td>' + d.distribution_date + '</td>' +
@@ -4894,7 +4894,7 @@ async function loadWTUsage() {
           byLocation[key] = { job: group.job, jobName: group.jobName, supervisor: group.supervisor, destType: group.destType, items: [], dates: new Set() };
         }
         group.items.forEach(function(item) {
-          // Merge duplicate item numbers — add quantities
+          // Merge duplicate item numbers -- add quantities
           const existing = byLocation[key].items.find(i => i.item_number === item.item_number);
           if (existing) {
             existing.quantity = parseFloat(existing.quantity) + parseFloat(item.quantity);
@@ -4909,7 +4909,7 @@ async function loadWTUsage() {
         transactionCount++;
         const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
         const dateRange = [...group.dates].sort().join(', ');
-        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">(!) Brady Industries: Some items at this location are sourced from Brady Industries -- place a separate Brady order.</td></tr>' : '';
 
         html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
           '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
@@ -4946,7 +4946,7 @@ async function loadWTUsage() {
       Object.values(byDateJob).forEach(function(group) {
         transactionCount++;
         const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items at this location are sourced from Brady Industries — place a separate Brady order.</td></tr>' : '';
+        const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">(!) Brady Industries: Some items at this location are sourced from Brady Industries -- place a separate Brady order.</td></tr>' : '';
 
         html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
           '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
@@ -5015,7 +5015,7 @@ function reRenderWTUsage() {
       transactionCount++;
       const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
       const dateRange = [...group.dates].sort().join(', ');
-      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">(!) Brady Industries: Some items sourced from Brady Industries -- place a separate order.</td></tr>' : '';
       html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
@@ -5034,7 +5034,7 @@ function reRenderWTUsage() {
     Object.values(byDateJob).forEach(function(group) {
       transactionCount++;
       const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
-      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">⚠️ Brady Industries: Some items sourced from Brady Industries — place a separate order.</td></tr>' : '';
+      const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ? '<tr><td colspan="7" style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px">(!) Brady Industries: Some items sourced from Brady Industries -- place a separate order.</td></tr>' : '';
       html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:16px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div><strong>' + group.jobName + '</strong>' + (group.supervisor ? ' &nbsp;->&nbsp; ' + group.supervisor : '') + '</div>' +
@@ -5102,7 +5102,7 @@ function printWTUsage() {
   data.groups.forEach(function(group) {
     const typeLabel = group.destType === 'supervisor' ? 'Supervisor Distribution' : 'Job Site';
     const bradyNote = BRADY_LOCATIONS && BRADY_LOCATIONS[group.job] ?
-      '<div style="background:#fff3e0;border-left:3px solid #e65100;padding:5px 10px;font-size:10px;color:#e65100;margin-bottom:4px"><b>⚠️ Brady Industries:</b> Some items at this location are sourced from Brady Industries — place a separate Brady order in addition to Imperial.</div>' : '';
+      '<div style="background:#fff3e0;border-left:3px solid #e65100;padding:5px 10px;font-size:10px;color:#e65100;margin-bottom:4px"><b>(!) Brady Industries:</b> Some items at this location are sourced from Brady Industries -- place a separate Brady order in addition to Imperial.</div>' : '';
 
     bodyHtml += '<div class="transaction">' +
       '<div class="trans-header">' +
