@@ -2843,6 +2843,9 @@ async function confirmAddItem(orderId) {
   if (!itemId) { alert('Please select an item.'); return; }
   if (qty <= 0) { alert('Please enter a quantity greater than 0.'); return; }
 
+  // Diagnostic - remove after testing
+  if (!order.id) { alert('ERROR: order.id is missing! Order object: ' + JSON.stringify({id: order.id, ref: order.order_ref})); return; }
+
   if (!order.items) order.items = {};
   order.items[itemId] = { name: itemName, qty: qty, unit: itemUnit, unitType: unitType, rebill: isRebill, vendor: itemVendor };
 
@@ -2850,6 +2853,10 @@ async function confirmAddItem(orderId) {
     showLoading('Saving...');
     const result = await sb.update('kencal_orders', { items: order.items, updated_at: new Date().toISOString() }, { id: order.id });
     if (result && result.error) throw new Error(result.error.message);
+    if (!Array.isArray(result) || result.length === 0) {
+      alert('WARNING: Supabase returned unexpected response: ' + JSON.stringify(result).substring(0, 200));
+      return;
+    }
     document.getElementById('addItemModal_'+orderId).remove();
     loadMaryOrders();
   } catch(e) {
