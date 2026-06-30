@@ -595,6 +595,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         </div>
         <div class="flex-gap mt-8">
           <button class="btn btn-outline" onclick="backToOrder()"><- Edit Order</button>
+          <button class="btn btn-outline" onclick="printSupOrder()">Print Order</button>
           <button class="btn btn-green" onclick="submitOrder()">OK Submit Order</button>
         </div>
       </div>
@@ -611,6 +612,24 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
   </div>
 
   <!-- MARY / INVENTORY MANAGER TAB -->
+  <!-- SUPERVISOR HISTORY TAB -->
+  <div class="tab-content" id="tab-sup-history">
+    <div class="section-title">My Order History</div>
+    <div class="filter-bar">
+      <select id="supHistoryStatus" onchange="loadSupHistory()">
+        <option value="">All Orders</option>
+        <option value="pending">Pending</option>
+        <option value="reviewed">Reviewed</option>
+        <option value="approved">Approved</option>
+        <option value="sent">Sent to Imperial</option>
+      </select>
+      <input type="date" id="supHistoryFrom" onchange="loadSupHistory()" placeholder="From">
+      <input type="date" id="supHistoryTo" onchange="loadSupHistory()" placeholder="To">
+      <button class="btn btn-primary btn-sm" onclick="loadSupHistory()">Refresh</button>
+    </div>
+    <div id="supHistoryList"><div class="empty-state"><div class="icon"></div><p>Click Refresh to load your orders.</p></div></div>
+  </div>
+
   <div class="tab-content" id="tab-mary">
     <div class="section-title">
       Inventory Manager -- Order Review
@@ -972,6 +991,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div class="form-group">
           <label>Type/Category</label>
           <input type="text" id="newProdType" placeholder="e.g. Paper Products">
+        </div>
+        <div class="form-group">
+          <label>Units per Case (optional)</label>
+          <input type="number" id="newProdCaseQty" placeholder="e.g. 6" min="1" style="width:100%">
         </div>
         <div class="form-group">
           <label>Vendor</label>
@@ -1422,7 +1445,10 @@ function buildTabs() {
   tabBar.innerHTML = '';
   const tabs = [];
 
-  if (currentRole === 'supervisor') tabs.push({id:'supervisor', label:' Submit Order'});
+  if (currentRole === 'supervisor') {
+    tabs.push({id:'supervisor', label:' Submit Order'});
+    tabs.push({id:'sup-history', label:' My Orders'});
+  }
   if (currentRole === 'mary' || currentRole === 'admin') {
     tabs.push({id:'mary', label:' Order Review'});
     tabs.push({id:'history', label:' History'});
@@ -1470,6 +1496,7 @@ function switchTab(tabId) {
     loadWTReceived(); loadWTUsage();
   }, 50);
   if (tabId === 'distribution') setTimeout(initDistTab, 50);
+  if (tabId === 'sup-history') setTimeout(loadSupHistory, 50);
 }
 
 // ===========================================================
@@ -1616,7 +1643,7 @@ async function loadLocationProductsFromSupabase() {
   try {
     let allRows = [], from = 0;
     while (true) {
-      const batch = await sbFetch(`kencal_location_products?select=job_number,item_number,item_description,unit,item_type,vendor&active=eq.true&limit=1000&offset=${from}`);
+      const batch = await sbFetch(`kencal_location_products?select=job_number,item_number,item_description,unit,item_type,vendor,case_qty&active=eq.true&limit=1000&offset=${from}`);
       if (!batch || batch.length === 0) break;
       allRows = allRows.concat(batch);
       if (batch.length < 1000) break;
@@ -1625,7 +1652,7 @@ async function loadLocationProductsFromSupabase() {
     if (allRows.length > 0) {
       allRows.forEach(row => {
         if (!locationProducts[row.job_number]) locationProducts[row.job_number] = {};
-        locationProducts[row.job_number][row.item_number] = { desc: row.item_description, unit: row.unit, type: row.item_type, vendor: row.vendor || 'Imperial' };
+        locationProducts[row.job_number][row.item_number] = { desc: row.item_description, unit: row.unit, type: row.item_type, vendor: row.vendor || 'Imperial', caseQty: row.case_qty || null };
       });
       console.log(`Loaded ${allRows.length} products from Supabase`);
       return;
@@ -2003,6 +2030,7 @@ function resetSupForm() {
 // MARY -- ORDER REVIEW
 // ===========================================================
 async function loadMaryOrders() {
+  const savedSup = document.getElementById('marySupervisorFilter') ? document.getElementById('marySupervisorFilter').value : '';
   showLoading('Loading orders...');
   try {
     const orders = await sb.query('kencal_orders', {order: 'created_at.desc'});
@@ -2012,6 +2040,10 @@ async function loadMaryOrders() {
     updatePendingCount();
     populateSupervisorFilter();
     buildStockAccumulator();
+    if (savedSup && document.getElementById('marySupervisorFilter')) {
+      document.getElementById('marySupervisorFilter').value = savedSup;
+      filterMaryOrders();
+    }
   } catch(e) {
     document.getElementById('maryOrdersList').innerHTML =
       `<div class="alert alert-error">! Could not load orders: ${e.message}<br><br>
@@ -2192,6 +2224,17 @@ function injectOrderFlags(orderId, flags, itemFlags) {
       }
     });
   });
+}
+
+function refreshOrderCard(orderId) {
+  const order = maryOrders.find(o => String(o.id) === String(orderId));
+  if (!order) return;
+  const cardEl = document.getElementById('orderCard' + orderId);
+  if (!cardEl) return;
+  const newHtml = renderOrderCard(order, 'mary');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = newHtml;
+  cardEl.replaceWith(tmp.firstElementChild);
 }
 
 function renderOrderCard(order, view) {
@@ -2638,8 +2681,13 @@ function buildImperialSummary() {
       window._imperialRebillOverrides[order.id + '_' + id] = isRebill;
       const unitType = item.unitType || 'Case';
       const key = itemAcct + '|' + id + '|' + (isRebill ? 'rebill' : 'standard');
+      // Get case_qty from catalog
+      let caseQty = null;
+      for (const jj of Object.keys(locationProducts)) {
+        if (locationProducts[jj][id] && locationProducts[jj][id].caseQty) { caseQty = locationProducts[jj][id].caseQty; break; }
+      }
       if (!consolidated[key]) {
-        consolidated[key] = { acct: itemAcct, id, name: item.name, unit: item.unit, unitTypes: {}, totalQty: 0, isRebill, locations: [], delivDate: order.delivery_date || '' };
+        consolidated[key] = { acct: itemAcct, id, name: item.name, unit: item.unit, unitTypes: {}, totalQty: 0, isRebill, locations: [], delivDate: order.delivery_date || '', caseQty };
       }
       const entry = consolidated[key];
       entry.unitTypes[unitType] = (entry.unitTypes[unitType] || 0) + (parseFloat(item.qty) || 0);
@@ -2662,9 +2710,20 @@ function buildImperialSummary() {
   Object.entries(consolidated).forEach(([key, entry]) => {
     const unitTypeKeys = Object.keys(entry.unitTypes);
     const isMixed = unitTypeKeys.length > 1;
-    const qtyDisplay = isMixed
-      ? unitTypeKeys.map(ut => entry.unitTypes[ut] + ' ' + ut).join(' + ')
-      : entry.totalQty + ' ' + (unitTypeKeys[0] || 'Case');
+    let qtyDisplay, conversionNote = '';
+    if (!isMixed && unitTypeKeys[0] === 'Each' && entry.caseQty) {
+      const totalEach = entry.unitTypes['Each'] || 0;
+      const cases = Math.ceil(totalEach / entry.caseQty);
+      const exactCases = totalEach / entry.caseQty;
+      qtyDisplay = cases + ' Case' + (cases !== 1 ? 's' : '');
+      if (cases > exactCases) {
+        conversionNote = ' <span style="color:#d97706;font-size:10px">(rounded up from ' + totalEach + ' Each)</span>';
+      }
+    } else if (isMixed) {
+      qtyDisplay = unitTypeKeys.map(ut => entry.unitTypes[ut] + ' ' + ut).join(' + ');
+    } else {
+      qtyDisplay = entry.totalQty + ' ' + (unitTypeKeys[0] || 'Case');
+    }
     const locTip = entry.locations.join(', ');
     const tr = document.createElement('tr');
     if (isMixed) { tr.style.background = '#fff0d0'; tr.style.outline = '2px solid #f59e0b'; }
@@ -2672,7 +2731,7 @@ function buildImperialSummary() {
       '<td title="' + locTip + '" style="cursor:help">' + (entry.locations.length > 1 ? entry.locations.length + ' locations' : entry.locations[0]) + '</td>' +
       '<td>' + entry.id + '</td>' +
       '<td>' + entry.name + '</td>' +
-      '<td><strong>' + qtyDisplay + '</strong>' + (isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) MIXED</span>' : '') + '</td>' +
+      '<td><strong>' + qtyDisplay + '</strong>' + conversionNote + (isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) MIXED</span>' : '') + '</td>' +
       '<td>' + (entry.unit||'') + '</td>' +
       '<td>' + (entry.delivDate || '<span style="color:var(--red)">! Set date</span>') + '</td>' +
       '<td>' + (entry.isRebill ? '<span class="badge badge-pending">YES</span>' : 'No') + '</td>' +
@@ -2973,7 +3032,7 @@ async function loadAdminProducts() {
     const editBtn = document.createElement('button');
     editBtn.className = 'btn btn-outline btn-xs';
     editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => editProduct(job, id, info.desc, info.unit, info.type, info.vendor || 'Imperial'));
+    editBtn.addEventListener('click', () => editProduct(job, id, info.desc, info.unit, info.type, info.vendor || 'Imperial', info.caseQty || null));
     btnDiv.appendChild(editBtn);
 
     const removeBtn = document.createElement('button');
@@ -2998,7 +3057,7 @@ async function addProductToLocation() {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/kencal_location_products`, {
     method: 'POST',
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ job_number: job, item_number: itemId, item_description: desc, unit, item_type: type, vendor: (document.getElementById('newProdVendor') ? document.getElementById('newProdVendor').value : 'Imperial'), active: true })
+    body: JSON.stringify({ job_number: job, item_number: itemId, item_description: desc, unit, item_type: type, vendor: (document.getElementById('newProdVendor') ? document.getElementById('newProdVendor').value : 'Imperial'), case_qty: (document.getElementById('newProdCaseQty') && document.getElementById('newProdCaseQty').value ? parseInt(document.getElementById('newProdCaseQty').value) : null), active: true })
   });
   if (!r.ok) { hideLoading(); alert('Error saving product. Check Supabase settings.'); return; }
   if (!locationProducts[job]) locationProducts[job] = {};
@@ -3012,7 +3071,7 @@ async function addProductToLocation() {
   alert(`Product "${desc}" saved permanently to Supabase.`);
 }
 
-async function editProduct(job, itemId, currentDesc, currentUnit, currentType, currentVendor) {
+async function editProduct(job, itemId, currentDesc, currentUnit, currentType, currentVendor, currentCaseQty) {
   const existing = document.getElementById('editProductModal');
   if (existing) existing.remove();
   const allJobs = Object.keys(locationProducts).filter(j => locationProducts[j] && locationProducts[j][itemId]);
@@ -3035,6 +3094,10 @@ async function editProduct(job, itemId, currentDesc, currentUnit, currentType, c
       <input type="text" id="editProdType" value="${currentType||''}" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box">
     </div>
     <div class="form-group" style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Units per Case (optional)</label>
+      <input type="number" id="editProdCaseQty" value="${currentCaseQty||''}" placeholder="e.g. 6" min="1" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
       <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Vendor</label>
       <select id="editProdVendor" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
         <option value="Imperial" ${(currentVendor||'Imperial')==='Imperial'?'selected':''}>Imperial</option>
@@ -3078,7 +3141,7 @@ async function saveEditProduct(job, itemId) {
     const r = await fetch(url, {
       method: 'PATCH',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_description: newDesc, unit: newUnit, item_type: newType, vendor: newVendor })
+      body: JSON.stringify({ item_description: newDesc, unit: newUnit, item_type: newType, vendor: newVendor, case_qty: (document.getElementById('editProdCaseQty') && document.getElementById('editProdCaseQty').value ? parseInt(document.getElementById('editProdCaseQty').value) : null) })
     });
     if (r.ok) {
       if (locationProducts[j] && locationProducts[j][itemId]) {
@@ -3086,6 +3149,7 @@ async function saveEditProduct(job, itemId) {
         locationProducts[j][itemId].unit = newUnit;
         locationProducts[j][itemId].type = newType;
         locationProducts[j][itemId].vendor = newVendor;
+        locationProducts[j][itemId].caseQty = document.getElementById('editProdCaseQty') && document.getElementById('editProdCaseQty').value ? parseInt(document.getElementById('editProdCaseQty').value) : null;
       }
     } else { failed++; }
   }
@@ -3301,7 +3365,7 @@ async function toggleEnteredInImperial(orderId, checked) {
     const order = maryOrders.find(o => String(o.id) === String(orderId));
     if (order) order.entered_in_imperial = checked;
     await sb.update('kencal_orders', { entered_in_imperial: checked, updated_at: new Date().toISOString() }, { id: orderId });
-    loadMaryOrders();
+    refreshOrderCard(orderId);
   } catch(e) { console.error('Failed to update entered_in_imperial:', e); }
 }
 
@@ -3312,6 +3376,7 @@ async function updateItemRebill(orderId, itemId, isRebill) {
     if (!order || !order.items || !order.items[itemId]) return;
     order.items[itemId].rebill = isRebill;
     await sb.update('kencal_orders', { items: order.items, updated_at: new Date().toISOString() }, { id: order.id });
+    refreshOrderCard(orderId);
   } catch(e) { console.error('Item rebill update failed:', e); }
 }
 
@@ -3321,6 +3386,7 @@ async function updateItemFromStock(orderId, itemId, isFromStock) {
     if (!order || !order.items || !order.items[itemId]) return;
     order.items[itemId].fromStock = isFromStock;
     await sb.update('kencal_orders', { items: order.items, updated_at: new Date().toISOString() }, { id: order.id });
+    refreshOrderCard(orderId);
   } catch(e) { console.error('Item fromStock update failed:', e); }
 }
 
@@ -3329,6 +3395,7 @@ async function updateOrderPO(orderId, poValue) {
     await sb.update('kencal_orders', { po_number: poValue }, { id: orderId });
     const order = (maryOrders || []).find(o => String(o.id) === String(orderId));
     if (order) order.po_number = poValue;
+    // No refresh - PO is free text, no need to re-render
   } catch(e) { console.error('PO update failed:', e); }
 }
 
@@ -3442,7 +3509,7 @@ async function confirmAddItem(orderId) {
     const result = await sb.update('kencal_orders', { items: order.items, updated_at: new Date().toISOString() }, { id: order.id });
     if (result && result.error) throw new Error(result.error.message);
     closeAddItemModal(orderId);
-    loadMaryOrders();
+    refreshOrderCard(orderId);
   } catch(e) {
     alert('Failed to add item: ' + e.message);
   } finally { hideLoading(); }
@@ -3710,6 +3777,93 @@ async function updateLocationDeliveryType(job, deliveryType) {
   } catch(e) {
     alert('Failed to update delivery type: ' + e.message);
     renderAdminLocations(document.getElementById('adminLocSearch') ? document.getElementById('adminLocSearch').value : '');
+  }
+}
+
+
+//  SUPERVISOR PRINT ORDER 
+function printSupOrder() {
+  const locName = LOCATION_NAMES[supCurrentJob] || supCurrentJob;
+  let trows = '';
+  Object.entries(supQtys).sort((a,b) => (a[1].type||'').localeCompare(b[1].type||'')).forEach(function(e) {
+    const id = e[0], item = e[1];
+    trows += '<tr>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + id + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + item.name + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">' + item.qty + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + (item.unitType||'Case') + '</td>' +
+      '</tr>';
+  });
+  const notes = document.getElementById('supOrderNotes') ? document.getElementById('supOrderNotes').value : '';
+  const css = 'body{font-family:Arial,sans-serif;padding:32px;color:#222;max-width:760px;margin:0 auto}' +
+    'h2{margin:0 0 4px;color:#1a2e4a}table{width:100%;border-collapse:collapse;margin-top:20px}' +
+    'th{background:#1a2e4a;color:white;padding:8px 10px;text-align:left;font-size:13px}' +
+    'td{font-size:13px}.meta{font-size:13px;color:#555;margin-bottom:3px}' +
+    '.note{background:#fffbea;border:1px solid #f0d060;padding:8px 12px;border-radius:6px;margin-top:10px;font-size:13px}' +
+    '.divider{border-top:2px solid #1a2e4a;margin:14px 0}@media print{button{display:none}}';
+  const dateStr = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  const html = '<!DOCTYPE html><html><head><title>Order - ' + locName + '</title>' +
+    '<style>' + css + '</style></head><body>' +
+    '<h2>' + locName + '</h2>' +
+    '<div class="meta">Supervisor: <strong>' + supCurrentName + '</strong></div>' +
+    '<div class="meta">Job #: ' + supCurrentJob + '</div>' +
+    '<div class="meta">Date: ' + dateStr + '</div>' +
+    (notes ? '<div class="note">Notes: ' + notes + '</div>' : '') +
+    '<div class="divider"></div>' +
+    '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th></tr></thead>' +
+    '<tbody>' + trows + '</tbody></table>' +
+    '<' + 'script>window.onload=function(){window.print();}<' + '/script></body></html>';
+  const w = window.open('', '_blank', 'width=820,height=950');
+  w.document.write(html);
+  w.document.close();
+}
+
+//  SUPERVISOR ORDER HISTORY 
+async function loadSupHistory() {
+  const container = document.getElementById('supHistoryList');
+  if (!container) return;
+  container.innerHTML = '<div style="color:#888;font-size:13px;padding:12px">Loading...</div>';
+  try {
+    const status = (document.getElementById('supHistoryStatus')||{value:''}).value;
+    const from = (document.getElementById('supHistoryFrom')||{value:''}).value;
+    const to = (document.getElementById('supHistoryTo')||{value:''}).value;
+    let filter = 'supervisor=eq.' + encodeURIComponent(supCurrentName);
+    if (status) filter += '&status=eq.' + status;
+    if (from) filter += '&created_at=gte.' + from;
+    if (to) filter += '&created_at=lte.' + to + 'T23:59:59';
+    const orders = await sbFetch('kencal_orders?' + filter + '&order=created_at.desc&limit=50');
+    if (!orders || orders.error || orders.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No orders found.</p></div>';
+      return;
+    }
+    let html = '';
+    orders.forEach(function(order) {
+      const dateStr = new Date(order.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+      const itemCount = Object.keys(order.items || {}).length;
+      const statusColor = {pending:'#888',reviewed:'#2563eb',approved:'#16a34a',sent:'#6b21a8',archived:'#aaa'}[order.status] || '#888';
+      const itemRows = Object.entries(order.items || {}).map(function(e) {
+        const id = e[0], item = e[1];
+        return '<tr><td style="padding:4px 8px;font-size:12px;border-bottom:1px solid #f0f0f0">' + id + '</td>' +
+          '<td style="padding:4px 8px;font-size:12px;border-bottom:1px solid #f0f0f0">' + item.name + '</td>' +
+          '<td style="padding:4px 8px;font-size:12px;border-bottom:1px solid #f0f0f0;text-align:center">' + item.qty + ' ' + (item.unitType||'Case') + '</td></tr>';
+      }).join('');
+      html += '<div style="border:1px solid var(--gray-light);border-radius:8px;margin-bottom:12px;overflow:hidden">' +
+        '<div style="background:var(--off-white);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">' +
+        '<div><strong>' + order.location_name + '</strong> <span style="font-size:12px;color:#888">(' + order.job_number + ')</span></div>' +
+        '<div style="text-align:right;font-size:12px"><span style="color:' + statusColor + ';font-weight:600">' + order.status.toUpperCase() + '</span><br>' + dateStr + '</div>' +
+        '</div>' +
+        '<div style="padding:0 0 8px 0">' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="background:#f5f7fa"><th style="padding:4px 8px;text-align:left;font-size:11px">Item #</th>' +
+        '<th style="padding:4px 8px;text-align:left;font-size:11px">Description</th>' +
+        '<th style="padding:4px 8px;text-align:center;font-size:11px">Qty</th></tr></thead>' +
+        '<tbody>' + itemRows + '</tbody></table>' +
+        (order.notes ? '<div style="padding:6px 12px;font-size:12px;color:#7a5a00;background:#fffbea;margin:4px 8px;border-radius:4px">Notes: ' + order.notes + '</div>' : '') +
+        '</div></div>';
+    });
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="alert alert-error">Could not load: ' + e.message + '</div>';
   }
 }
 
