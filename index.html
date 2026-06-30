@@ -3827,13 +3827,15 @@ async function loadSupHistory() {
     const status = (document.getElementById('supHistoryStatus')||{value:''}).value;
     const from = (document.getElementById('supHistoryFrom')||{value:''}).value;
     const to = (document.getElementById('supHistoryTo')||{value:''}).value;
-    let filter = 'supervisor=eq.' + encodeURIComponent(supCurrentName);
+    let filter = 'supervisor=ilike.' + encodeURIComponent(supCurrentName.trim());
     if (status) filter += '&status=eq.' + status;
     if (from) filter += '&created_at=gte.' + from;
     if (to) filter += '&created_at=lte.' + to + 'T23:59:59';
+    console.log('DEBUG loadSupHistory: supCurrentName=', JSON.stringify(supCurrentName), 'filter=', filter);
     const orders = await sbFetch('kencal_orders?' + filter + '&order=created_at.desc&limit=50');
     if (!orders || orders.error || orders.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No orders found.</p></div>';
+      container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No orders found.</p>' +
+        '<p style="font-size:11px;color:#bbb;margin-top:8px">Searching for supervisor: "' + supCurrentName + '"</p></div>';
       return;
     }
     let html = '';
