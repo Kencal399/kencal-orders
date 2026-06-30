@@ -835,6 +835,31 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       </div>
     </div>
 
+    <!-- SECTION 2.5: LEFTOVER STOCK LOG -->
+    <div class="card">
+      <div class="card-title">Leftover Stock
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="loadLeftoverStock()">Refresh</button>
+      </div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px">Log what's left over after opening a case and distributing units. Mary sees this when building Imperial orders.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px">
+        <div class="form-group">
+          <label>Search Item</label>
+          <input type="text" id="leftoverItemSearch" placeholder="Type item number or description..." oninput="searchLeftoverItem(this.value)" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+          <div id="leftoverItemResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div>
+        </div>
+        <div class="form-group">
+          <label>Selected Item</label>
+          <div id="leftoverSelectedBadge" style="padding:8px;background:var(--off-white);border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;color:var(--gray-dark);min-height:38px">No item selected</div>
+        </div>
+        <div class="form-group">
+          <label>Qty Leftover (Each)</label>
+          <input type="number" id="leftoverQty" min="0.5" step="0.5" placeholder="e.g. 3" style="width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveLeftoverStock()">Save</button>
+      </div>
+      <div id="leftoverStockList"></div>
+    </div>
+
     <!-- SECTION 3: STOCK LOG TABLE -->
     <div class="card">
       <div class="card-title">Stock Distribution Log
@@ -1189,7 +1214,11 @@ const sb = {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify(data)
     });
-    return r.json();
+    const json = await r.json();
+    if (!r.ok) {
+      return { error: { message: (json && json.message) ? json.message : ('HTTP ' + r.status), details: json } };
+    }
+    return json;
   },
   async update(table, data, match) {
     let url = `${SUPABASE_URL}/rest/v1/${table}?`;
@@ -2655,12 +2684,21 @@ function clearAllImperial() {
   document.getElementById('imperialSummary').classList.add('hidden');
 }
 
-function buildImperialSummary() {
+async function buildImperialSummary() {
   if (selectedOrdersForExport.size === 0) { alert('Please select at least one order.'); return; }
   const orders = (window._imperialOrders || []).filter(o => selectedOrdersForExport.has(o.id));
   const tbody = document.getElementById('imperialSummaryBody');
   tbody.innerHTML = '';
   window._imperialRebillOverrides = {};
+
+  // Fetch leftover stock for visibility
+  let leftoverByItem = {};
+  try {
+    const leftoverRows = await sb.query('kencal_leftover_stock', {});
+    (leftoverRows || []).forEach(function(r) {
+      leftoverByItem[r.item_number] = (leftoverByItem[r.item_number] || 0) + (parseFloat(r.qty_leftover) || 0);
+    });
+  } catch(e) { console.error('Could not load leftover stock:', e); }
 
   const consolidated = {};
   orders.forEach(function(order) {
@@ -2725,12 +2763,16 @@ function buildImperialSummary() {
       qtyDisplay = entry.totalQty + ' ' + (unitTypeKeys[0] || 'Case');
     }
     const locTip = entry.locations.join(', ');
+    const leftoverQty = leftoverByItem[entry.id] || 0;
+    const leftoverNote = leftoverQty > 0
+      ? '<br><span style="font-size:10px;color:#7a5a00;background:#fffbea;padding:1px 5px;border-radius:3px">' + leftoverQty + ' leftover in stock</span>'
+      : '';
     const tr = document.createElement('tr');
     if (isMixed) { tr.style.background = '#fff0d0'; tr.style.outline = '2px solid #f59e0b'; }
     tr.innerHTML = '<td>' + entry.acct + '</td>' +
       '<td title="' + locTip + '" style="cursor:help">' + (entry.locations.length > 1 ? entry.locations.length + ' locations' : entry.locations[0]) + '</td>' +
       '<td>' + entry.id + '</td>' +
-      '<td>' + entry.name + '</td>' +
+      '<td>' + entry.name + leftoverNote + '</td>' +
       '<td><strong>' + qtyDisplay + '</strong>' + conversionNote + (isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) MIXED</span>' : '') + '</td>' +
       '<td>' + (entry.unit||'') + '</td>' +
       '<td>' + (entry.delivDate || '<span style="color:var(--red)">! Set date</span>') + '</td>' +
@@ -3869,6 +3911,112 @@ async function loadSupHistory() {
   }
 }
 
+
+//  LEFTOVER STOCK LOG 
+let leftoverSelectedItem = null;
+
+function searchLeftoverItem(query) {
+  const resultsEl = document.getElementById('leftoverItemResults');
+  if (!query || query.length < 2) { resultsEl.style.display = 'none'; return; }
+  const q = query.toLowerCase();
+  const matches = [];
+  const seen = new Set();
+  Object.values(locationProducts).forEach(function(lp) {
+    Object.entries(lp).forEach(function(e) {
+      const id = e[0], info = e[1];
+      if (seen.has(id)) return;
+      if (id.toLowerCase().includes(q) || (info.desc||'').toLowerCase().includes(q)) {
+        matches.push({ id: id, desc: info.desc, unit: info.unit });
+        seen.add(id);
+      }
+    });
+  });
+  if (matches.length === 0) { resultsEl.innerHTML = '<div style="padding:8px;font-size:12px;color:#888">No matches</div>'; resultsEl.style.display = 'block'; return; }
+  resultsEl.innerHTML = matches.slice(0, 20).map(function(m) {
+    return '<div style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0" onmouseover="this.style.background=\'#f5f7fa\'" onmouseout="this.style.background=\'white\'" onclick="selectLeftoverItem(\'' + m.id + '\',\'' + (m.desc||'').replace(/'/g,"\\'") + '\',\'' + (m.unit||'') + '\')">' + m.desc + ' (' + m.id + ')</div>';
+  }).join('');
+  resultsEl.style.display = 'block';
+}
+
+function selectLeftoverItem(id, desc, unit) {
+  leftoverSelectedItem = { id: id, desc: desc, unit: unit };
+  document.getElementById('leftoverSelectedBadge').textContent = desc + ' (' + id + ')';
+  document.getElementById('leftoverItemResults').style.display = 'none';
+  document.getElementById('leftoverItemSearch').value = '';
+}
+
+async function saveLeftoverStock() {
+  if (!leftoverSelectedItem) { alert('Please select an item first.'); return; }
+  const qty = parseFloat(document.getElementById('leftoverQty').value) || 0;
+  if (qty <= 0) { alert('Please enter a quantity greater than 0.'); return; }
+  try {
+    showLoading('Saving...');
+    await sb.insert('kencal_leftover_stock', {
+      item_number: leftoverSelectedItem.id,
+      item_description: leftoverSelectedItem.desc,
+      unit: leftoverSelectedItem.unit,
+      qty_leftover: qty,
+      logged_by: currentUser,
+      created_at: new Date().toISOString()
+    });
+    leftoverSelectedItem = null;
+    document.getElementById('leftoverSelectedBadge').textContent = 'No item selected';
+    document.getElementById('leftoverQty').value = '';
+    loadLeftoverStock();
+  } catch(e) {
+    alert('Failed to save: ' + e.message);
+  } finally { hideLoading(); }
+}
+
+async function loadLeftoverStock() {
+  const container = document.getElementById('leftoverStockList');
+  if (!container) return;
+  container.innerHTML = '<div style="color:#888;font-size:13px">Loading...</div>';
+  try {
+    const rows = await sb.query('kencal_leftover_stock', { order: 'created_at.desc' });
+    if (!rows || rows.error || rows.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="icon"></div><p>No leftover stock logged.</p></div>';
+      return;
+    }
+    // Consolidate by item
+    const byItem = {};
+    rows.forEach(function(r) {
+      if (!byItem[r.item_number]) byItem[r.item_number] = { desc: r.item_description, unit: r.unit, total: 0, entries: [] };
+      byItem[r.item_number].total += parseFloat(r.qty_leftover) || 0;
+      byItem[r.item_number].entries.push(r);
+    });
+    window._leftoverStockData = byItem;
+    let html = '<table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr style="background:var(--navy);color:white">' +
+      '<th style="padding:6px 8px;text-align:left">Item #</th><th style="padding:6px 8px;text-align:left">Description</th>' +
+      '<th style="padding:6px 8px;text-align:center">Qty Left</th><th style="padding:6px 8px;text-align:left">Unit</th><th></th></tr></thead><tbody>';
+    Object.entries(byItem).sort((a,b) => a[1].desc.localeCompare(b[1].desc)).forEach(function(e) {
+      const id = e[0], data = e[1];
+      html += '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee">' + id + '</td>' +
+        '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + data.desc + '</td>' +
+        '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center"><strong>' + data.total + '</strong></td>' +
+        '<td style="padding:6px 8px;border-bottom:1px solid #eee">' + data.unit + '</td>' +
+        '<td style="padding:6px 8px;border-bottom:1px solid #eee"><button class="btn btn-danger btn-xs" onclick="clearLeftoverStock(\'' + id + '\')">Clear</button></td></tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="alert alert-error">Could not load: ' + e.message + '</div>';
+  }
+}
+
+async function clearLeftoverStock(itemId) {
+  if (!window.confirm('Clear all leftover stock entries for this item?')) return;
+  try {
+    showLoading('Clearing...');
+    await fetch(SUPABASE_URL + '/rest/v1/kencal_leftover_stock?item_number=eq.' + encodeURIComponent(itemId),
+      { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+    loadLeftoverStock();
+  } catch(e) {
+    alert('Failed to clear: ' + e.message);
+  } finally { hideLoading(); }
+}
+
 function initDistTab() {
   const today = new Date().toISOString().split('T')[0];
   const dateInput = document.getElementById('distDate');
@@ -3879,6 +4027,7 @@ function initDistTab() {
   buildWarehouseItemIndex();
   loadDistributions();
   loadDeliverySheet();
+  loadLeftoverStock();
   const wtFilter = document.getElementById('distFilterWinTeam');
   if (wtFilter) wtFilter.style.display = (currentRole === 'mary' || currentRole === 'admin') ? 'block' : 'none';
 }
@@ -4156,7 +4305,7 @@ async function logDistribution() {
       logged_by: currentUser,
       created_at: new Date().toISOString()
     });
-    if (result && result.error) { hasError = true; console.error(result.error); }
+    if (result && result.error) { hasError = true; console.error(result.error); alert('Save error: ' + result.error.message); }
   }
 
   if (hasError) {
