@@ -585,7 +585,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div class="card-title"> Review Your Order</div>
         <div id="supReviewInfo" class="alert alert-info mb-8"></div>
         <table class="review-table">
-          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Unit</th></tr></thead>
+          <thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th></tr></thead>
           <tbody id="supReviewBody"></tbody>
         </table>
         <div class="divider"></div>
@@ -1937,7 +1937,7 @@ function reviewOrder() {
 
   Object.entries(supQtys).sort((a,b) => a[1].type.localeCompare(b[1].type)).forEach(([id, item]) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${id}</td><td>${item.name}</td><td><input type="number" class="qty-edit" value="${item.qty}" min="0.5" step="0.5" onchange="supQtys['${id}'].qty = parseFloat(this.value)||0"></td><td>${item.unitType||'Case'}</td><td>${item.unit}</td>`;
+    tr.innerHTML = `<td>${id}</td><td>${item.name}</td><td><input type="number" class="qty-edit" value="${item.qty}" min="0.5" step="0.5" onchange="supQtys['${id}'].qty = parseFloat(this.value)||0"></td><td>${item.unitType||'Case'}</td>`;
     tbody.appendChild(tr);
   });
 
