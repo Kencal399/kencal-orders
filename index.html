@@ -1379,7 +1379,7 @@ function doLogin() {
   if (userVal === 'rick') { currentUser = 'Rick Storey'; currentRole = 'admin'; }
   else if (userVal === 'mary') { currentUser = 'Mary Cintron'; currentRole = 'mary'; }
   else if (userVal === 'santiago_wh') { currentUser = 'Santiago Alzate'; currentRole = 'warehouse'; }
-  else if (userVal.startsWith('sup_')) { currentUser = userVal.replace('sup_',''); currentRole = 'supervisor'; }
+  else if (userVal.startsWith('sup_')) { currentUser = userVal.replace('sup_',''); currentRole = 'supervisor'; supCurrentName = currentUser; }
 
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
