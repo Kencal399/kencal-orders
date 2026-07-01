@@ -643,7 +643,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 
     <div class="filter-bar">
       <select id="maryStatusFilter" onchange="filterMaryOrders()">
-        <option value="active">Active Orders</option>
+        <option value="active">Pending & Reviewed</option>
         <option value="">All Statuses</option>
         <option value="pending">Pending</option>
         <option value="reviewed">Reviewed</option>
@@ -2098,7 +2098,7 @@ function filterMaryOrders() {
   const status = document.getElementById('maryStatusFilter').value;
   const sup = document.getElementById('marySupervisorFilter').value;
   let filtered = maryOrders;
-  if (status === 'active') filtered = filtered.filter(o => o.status !== 'sent');
+  if (status === 'active') filtered = filtered.filter(o => o.status !== 'sent' && o.status !== 'approved');
   else if (status) filtered = filtered.filter(o => o.status === status);
   if (sup) filtered = filtered.filter(o => o.supervisor === sup);
   renderMaryOrders(filtered);
@@ -2632,7 +2632,13 @@ function renderImperialOrders(orders) {
   }
 
   container.innerHTML = `
-    <div class="alert alert-info mb-8">Select orders to include in this Imperial CSV batch.</div>
+    <div class="alert alert-info mb-8" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Select orders to include in this Imperial CSV batch.</span>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+        <input type="checkbox" id="selectAllImperial" onchange="toggleSelectAllImperial(this.checked)" style="width:16px;height:16px">
+        Select All
+      </label>
+    </div>
     ${orders.map(order => {
       const dateStr = new Date(order.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'});
       let acct;
@@ -3404,8 +3410,13 @@ async function toggleWinTeamEntered(distId, checked) {
 async function toggleEnteredInImperial(orderId, checked) {
   try {
     const order = maryOrders.find(o => String(o.id) === String(orderId));
-    if (order) order.entered_in_imperial = checked;
-    await sb.update('kencal_orders', { entered_in_imperial: checked, updated_at: new Date().toISOString() }, { id: orderId });
+    if (order) {
+      order.entered_in_imperial = checked;
+      if (checked) order.status = 'sent';
+    }
+    const updateData = { entered_in_imperial: checked, updated_at: new Date().toISOString() };
+    if (checked) updateData.status = 'sent';
+    await sb.update('kencal_orders', updateData, { id: orderId });
     refreshOrderCard(orderId);
   } catch(e) { console.error('Failed to update entered_in_imperial:', e); }
 }
