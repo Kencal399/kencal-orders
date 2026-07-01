@@ -722,8 +722,16 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <span class="sub">Log supplies distributed from warehouse stock</span>
     </div>
 
+    <!-- Quick navigation -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('distPendingSection').scrollIntoView({behavior:'smooth'})">Pending Deliveries</button>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('distStockLogSection').scrollIntoView({behavior:'smooth'})">Log Stock Delivery</button>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('distLeftoverSection').scrollIntoView({behavior:'smooth'})">Leftover Stock</button>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('distLogSection').scrollIntoView({behavior:'smooth'})">Stock Distribution Log</button>
+    </div>
+
     <!-- SECTION 1: DELIVERY SHEET -->
-    <div class="card">
+    <div class="card" id="distPendingSection">
       <div class="card-title">Pending Deliveries
         <div class="flex-gap" style="margin-left:auto">
           <button class="btn btn-primary btn-sm" onclick="loadDeliverySheet()">Refresh</button>
@@ -735,7 +743,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
 
     <!-- SECTION 2: STOCK LOG FORM -->
-    <div class="card">
+    <div class="card" id="distStockLogSection">
       <div class="card-title">+ Log Stock Delivery</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px">Record items delivered from warehouse stock (not from a supervisor order). Mary uses this for WinTeam job costing.</div>
       <div class="form-row">
@@ -829,7 +837,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
 
     <!-- SECTION 2.5: LEFTOVER STOCK LOG -->
-    <div class="card">
+    <div class="card" id="distLeftoverSection">
       <div class="card-title">Leftover Stock
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="loadLeftoverStock()">Refresh</button>
       </div>
@@ -854,7 +862,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
 
     <!-- SECTION 3: STOCK LOG TABLE -->
-    <div class="card">
+    <div class="card" id="distLogSection">
       <div class="card-title">Stock Distribution Log
         <div class="flex-gap" style="margin-left:auto">
           <button class="btn btn-primary btn-sm" onclick="loadDistributions()">Refresh</button>
@@ -4375,11 +4383,11 @@ function exportDistributionPDF() {
   const bySup = {};
   const debugInfo = [];
   filtered.slice().sort(function(a,b) {
-    const supA = a.supervisor || jobToSup[a.job_number] || 'Unassigned';
-    const supB = b.supervisor || jobToSup[b.job_number] || 'Unassigned';
+    const supA = jobToSup[a.job_number] || jobToSup[String(a.job_number)] || a.supervisor || 'Unassigned';
+    const supB = jobToSup[b.job_number] || jobToSup[String(b.job_number)] || b.supervisor || 'Unassigned';
     return supA.localeCompare(supB) || (a.job_description||'').localeCompare(b.job_description||'');
   }).forEach(function(d) {
-    const sup = d.supervisor || jobToSup[d.job_number] || jobToSup[String(d.job_number)] || 'Unassigned';
+    const sup = jobToSup[d.job_number] || jobToSup[String(d.job_number)] || d.supervisor || 'Unassigned';
     debugInfo.push(d.job_number + ' -> ' + sup);
     if (!bySup[sup]) bySup[sup] = {};
     const dest = d.job_description || 'Unknown';
