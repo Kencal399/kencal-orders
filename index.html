@@ -4364,32 +4364,34 @@ function exportDistributionPDF() {
   const printDate = new Date().toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
   const rangeStr = fromDate && toDate ? fromDate + ' to ' + toDate : fromDate ? 'From ' + fromDate : toDate ? 'Through ' + toDate : 'All Dates';
 
-  // Group by date then destination
-  const byDate = {};
+  // Group by supervisor then account
+  const bySup = {};
   filtered.slice().sort(function(a,b) {
-    return a.distribution_date.localeCompare(b.distribution_date) || (a.job_description||'').localeCompare(b.job_description||'');
+    const supA = a.supervisor || 'Unassigned';
+    const supB = b.supervisor || 'Unassigned';
+    return supA.localeCompare(supB) || (a.job_description||'').localeCompare(b.job_description||'');
   }).forEach(function(d) {
-    if (!byDate[d.distribution_date]) byDate[d.distribution_date] = {};
-    const dest = d.dest_type === 'supervisor' && d.supervisor ? d.supervisor + ' -- ' + d.job_description : d.job_description;
+    const sup = d.supervisor || 'Unassigned';
+    if (!bySup[sup]) bySup[sup] = {};
+    const dest = d.job_description || 'Unknown';
     const key = (d.job_number || 'PENDING') + '||' + dest;
-    if (!byDate[d.distribution_date][key]) byDate[d.distribution_date][key] = { job: d.job_number || 'PENDING', dest: dest, type: d.dest_type, items: [] };
-    byDate[d.distribution_date][key].items.push(d);
+    if (!bySup[sup][key]) bySup[sup][key] = { job: d.job_number || 'PENDING', dest: dest, items: [] };
+    bySup[sup][key].items.push(d);
   });
 
   let bodyHtml = '';
-  Object.entries(byDate).forEach(function(dateEntry) {
-    const date = dateEntry[0], groups = dateEntry[1];
-    bodyHtml += '<div class="date-section"><div class="date-header">' + date + '</div>';
-    Object.values(groups).forEach(function(group) {
-      const typeLabel = group.type === 'supervisor' ? 'Supervisor' : 'Job Site';
+  Object.entries(bySup).forEach(function(supEntry) {
+    const sup = supEntry[0], groups = supEntry[1];
+    bodyHtml += '<div class="date-section"><div class="date-header">' + sup + '</div>';
+    Object.values(groups).sort(function(a,b){ return (a.dest||'').localeCompare(b.dest||''); }).forEach(function(group) {
       bodyHtml += '<div class="dest-block">' +
         '<div class="dest-header">' +
         '<span class="dest-name">' + group.dest + '</span>' +
-        '<span class="dest-job">Job # ' + group.job + ' &nbsp;&nbsp; ' + typeLabel + '</span>' +
+        '<span class="dest-job">Job # ' + group.job + '</span>' +
         '</div>' +
-        '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th></tr></thead><tbody>' +
+        '<table><thead><tr><th>Date</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th></tr></thead><tbody>' +
         group.items.map(function(item) {
-          return '<tr><td>' + item.item_number + '</td><td>' + item.item_description + '</td><td>' + item.quantity + '</td><td>' + item.unit + '</td><td>' + (item.notes || '') + '</td></tr>';
+          return '<tr><td>' + item.distribution_date + '</td><td>' + item.item_number + '</td><td>' + item.item_description + '</td><td>' + item.quantity + '</td><td>' + item.unit + '</td><td>' + (item.notes || '') + '</td></tr>';
         }).join('') +
         '</tbody></table></div>';
     });
