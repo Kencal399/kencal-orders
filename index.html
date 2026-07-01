@@ -4365,13 +4365,20 @@ function exportDistributionPDF() {
   const rangeStr = fromDate && toDate ? fromDate + ' to ' + toDate : fromDate ? 'From ' + fromDate : toDate ? 'Through ' + toDate : 'All Dates';
 
   // Group by supervisor then account
+  // Build a reverse lookup: job_number -> supervisor name
+  const jobToSup = {};
+  Object.entries(SUPERVISOR_LOCATIONS).forEach(function(e) {
+    const sup = e[0], jobs = e[1];
+    jobs.forEach(function(j) { jobToSup[j] = sup; });
+  });
+
   const bySup = {};
   filtered.slice().sort(function(a,b) {
-    const supA = a.supervisor || 'Unassigned';
-    const supB = b.supervisor || 'Unassigned';
+    const supA = a.supervisor || jobToSup[a.job_number] || 'Unassigned';
+    const supB = b.supervisor || jobToSup[b.job_number] || 'Unassigned';
     return supA.localeCompare(supB) || (a.job_description||'').localeCompare(b.job_description||'');
   }).forEach(function(d) {
-    const sup = d.supervisor || 'Unassigned';
+    const sup = d.supervisor || jobToSup[d.job_number] || 'Unassigned';
     if (!bySup[sup]) bySup[sup] = {};
     const dest = d.job_description || 'Unknown';
     const key = (d.job_number || 'PENDING') + '||' + dest;
@@ -4380,7 +4387,7 @@ function exportDistributionPDF() {
   });
 
   let bodyHtml = '';
-  Object.entries(bySup).forEach(function(supEntry) {
+  Object.entries(bySup).sort(function(a,b){ return a[0].localeCompare(b[0]); }).forEach(function(supEntry) {
     const sup = supEntry[0], groups = supEntry[1];
     bodyHtml += '<div class="date-section"><div class="date-header">' + sup + '</div>';
     Object.values(groups).sort(function(a,b){ return (a.dest||'').localeCompare(b.dest||''); }).forEach(function(group) {
