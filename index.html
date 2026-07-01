@@ -866,8 +866,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
       <div class="card-title">Stock Distribution Log
         <div class="flex-gap" style="margin-left:auto">
           <button class="btn btn-primary btn-sm" onclick="loadDistributions()">Refresh</button>
-          <button class="btn btn-green btn-sm" onclick="exportDistributionPDF()">Print / PDF</button>
-          <button class="btn btn-outline btn-sm" onclick="exportDistributionReport()">CSV</button>
+          ${currentRole === 'admin' ? '<button class="btn btn-green btn-sm" onclick="exportDistributionPDF()">Print / PDF</button><button class="btn btn-outline btn-sm" onclick="exportDistributionReport()">CSV</button>' : ''}
         </div>
       </div>
       <div class="filter-bar">
@@ -3346,10 +3345,16 @@ async function loadDeliverySheet() {
       container.innerHTML = '<div class="alert alert-success">No pending warehouse deliveries.</div>';
       return;
     }
+    // Build reverse lookup: job -> supervisor
+    const jobToSupDS = {};
+    Object.entries(SUPERVISOR_LOCATIONS).forEach(function(e) {
+      e[1].forEach(function(j) { jobToSupDS[j] = e[0]; });
+    });
     const byLocation = {};
     orders.forEach(function(order) {
       const loc = order.location_name;
-      if (!byLocation[loc]) byLocation[loc] = { job: order.job_number, items: {} };
+      const sup = jobToSupDS[order.job_number] || jobToSupDS[String(order.job_number)] || 'Unassigned';
+      if (!byLocation[loc]) byLocation[loc] = { job: order.job_number, supervisor: sup, items: {} };
       Object.entries(order.items || {}).forEach(function(e) {
         const id = e[0], item = e[1];
         if (byLocation[loc].items[id]) { byLocation[loc].items[id].qty += (parseFloat(item.qty) || 0); }
@@ -3358,7 +3363,12 @@ async function loadDeliverySheet() {
     });
     window._deliverySheetData = byLocation;
     let html = '';
-    Object.keys(byLocation).sort().forEach(function(loc) {
+    // Sort by supervisor then location name
+    Object.keys(byLocation).sort(function(a,b) {
+      const supA = byLocation[a].supervisor || '';
+      const supB = byLocation[b].supervisor || '';
+      return supA.localeCompare(supB) || a.localeCompare(b);
+    }).forEach(function(loc) {
       const data = byLocation[loc];
       const rows = Object.entries(data.items).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
         const id = e[0], item = e[1];
@@ -3369,7 +3379,8 @@ async function loadDeliverySheet() {
       }).join('');
       html += '<div style="margin-bottom:16px;border:1px solid var(--gray-light);border-radius:8px;overflow:hidden">' +
         '<div style="background:var(--navy);color:white;padding:10px 14px;font-weight:700;font-size:14px">' + loc +
-        (data.job ? ' <span style="font-weight:400;font-size:12px;opacity:0.8">Job ' + data.job + '</span>' : '') + '</div>' +
+        (data.job ? ' <span style="font-weight:400;font-size:12px;opacity:0.8">Job ' + data.job + '</span>' : '') +
+        (data.supervisor ? ' <span style="font-weight:400;font-size:11px;opacity:0.7">| ' + data.supervisor + '</span>' : '') + '</div>' +
         '<table style="width:100%;border-collapse:collapse">' +
         '<thead><tr style="background:#f5f7fa"><th style="padding:6px 8px;text-align:left;font-size:12px">Item #</th>' +
         '<th style="padding:6px 8px;text-align:left;font-size:12px">Description</th>' +
@@ -3387,13 +3398,17 @@ function printDeliverySheet() {
   const data = window._deliverySheetData;
   if (!data || Object.keys(data).length === 0) { alert('Please click Refresh first.'); return; }
   let body = '';
-  Object.keys(data).sort().forEach(function(loc) {
+  Object.keys(data).sort(function(a,b) {
+    const supA = data[a].supervisor || '';
+    const supB = data[b].supervisor || '';
+    return supA.localeCompare(supB) || a.localeCompare(b);
+  }).forEach(function(loc) {
     const d = data[loc];
     const rows = Object.entries(d.items).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(function(e) {
       const id = e[0], item = e[1];
       return '<tr><td>' + id + '</td><td>' + item.name + '</td><td style="text-align:center"><strong>' + item.qty + '</strong></td><td>' + item.unitType + '</td><td style="width:80px">&nbsp;</td></tr>';
     }).join('');
-    body += '<div class="loc-block"><div class="loc-header">' + loc + (d.job ? ' - Job ' + d.job : '') + '</div>' +
+    body += '<div class="loc-block"><div class="loc-header">' + loc + (d.job ? ' - Job ' + d.job : '') + (d.supervisor ? ' | ' + d.supervisor : '') + '</div>' +
       '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivered</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   });
   const css = 'body{font-family:Arial,sans-serif;padding:24px;color:#222}h2{margin:0 0 4px;color:#1a2e4a}.date{font-size:12px;color:#888;margin-bottom:20px}.loc-block{margin-bottom:24px;break-inside:avoid}.loc-header{background:#1a2e4a;color:white;padding:8px 12px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0}table{width:100%;border-collapse:collapse;border:1px solid #ddd;border-top:none}th{background:#f5f7fa;padding:6px 8px;text-align:left;font-size:12px;border-bottom:1px solid #ddd}td{padding:6px 8px;font-size:13px;border-bottom:1px solid #eee}@media print{button{display:none}}';
@@ -4381,14 +4396,12 @@ function exportDistributionPDF() {
   });
 
   const bySup = {};
-  const debugInfo = [];
   filtered.slice().sort(function(a,b) {
     const supA = jobToSup[a.job_number] || jobToSup[String(a.job_number)] || a.supervisor || 'Unassigned';
     const supB = jobToSup[b.job_number] || jobToSup[String(b.job_number)] || b.supervisor || 'Unassigned';
     return supA.localeCompare(supB) || (a.job_description||'').localeCompare(b.job_description||'');
   }).forEach(function(d) {
     const sup = jobToSup[d.job_number] || jobToSup[String(d.job_number)] || d.supervisor || 'Unassigned';
-    debugInfo.push(d.job_number + ' -> ' + sup);
     if (!bySup[sup]) bySup[sup] = {};
     const dest = d.job_description || 'Unknown';
     const key = (d.job_number || 'PENDING') + '||' + dest;
@@ -4436,7 +4449,6 @@ function exportDistributionPDF() {
     '<h1>Kencal Supply -- Distribution Report</h1>' +
     '<div class="subtitle">Generated: ' + printDate + '</div>' +
     '<div class="range">Period: ' + rangeStr + ' &nbsp;&nbsp; ' + filtered.length + ' entries</div>' +
-    '<div style="font-size:9px;color:#aaa;margin-bottom:8px">DEBUG - Job mappings: ' + [...new Set(debugInfo)].slice(0,10).join(' | ') + '</div>' +
     bodyHtml +
     '<div class="footer">Kencal Maintenance &nbsp;|&nbsp; kencal-supply-app.netlify.app</div>' +
     '</body></html>'
