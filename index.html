@@ -4373,12 +4373,14 @@ function exportDistributionPDF() {
   });
 
   const bySup = {};
+  const debugInfo = [];
   filtered.slice().sort(function(a,b) {
     const supA = a.supervisor || jobToSup[a.job_number] || 'Unassigned';
     const supB = b.supervisor || jobToSup[b.job_number] || 'Unassigned';
     return supA.localeCompare(supB) || (a.job_description||'').localeCompare(b.job_description||'');
   }).forEach(function(d) {
-    const sup = d.supervisor || jobToSup[d.job_number] || 'Unassigned';
+    const sup = d.supervisor || jobToSup[d.job_number] || jobToSup[String(d.job_number)] || 'Unassigned';
+    debugInfo.push(d.job_number + ' -> ' + sup);
     if (!bySup[sup]) bySup[sup] = {};
     const dest = d.job_description || 'Unknown';
     const key = (d.job_number || 'PENDING') + '||' + dest;
@@ -4426,6 +4428,7 @@ function exportDistributionPDF() {
     '<h1>Kencal Supply -- Distribution Report</h1>' +
     '<div class="subtitle">Generated: ' + printDate + '</div>' +
     '<div class="range">Period: ' + rangeStr + ' &nbsp;&nbsp; ' + filtered.length + ' entries</div>' +
+    '<div style="font-size:9px;color:#aaa;margin-bottom:8px">DEBUG - Job mappings: ' + [...new Set(debugInfo)].slice(0,10).join(' | ') + '</div>' +
     bodyHtml +
     '<div class="footer">Kencal Maintenance &nbsp;|&nbsp; kencal-supply-app.netlify.app</div>' +
     '</body></html>'
