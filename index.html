@@ -696,14 +696,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
     </div>
   </div>
 
-  <!-- WAREHOUSE TAB -->
-  <div class="tab-content" id="tab-warehouse">
-    <div class="section-title">Warehouse -- Approved Orders</div>
-    <div class="flex-gap mb-8">
-      <button class="btn btn-primary btn-sm" onclick="loadWarehouseOrders()"> Refresh</button>
-    </div>
-    <div id="warehouseOrdersList"></div>
-  </div>
+
 
   <!-- HISTORY TAB -->
   <div class="tab-content" id="tab-history">
@@ -1488,7 +1481,6 @@ function buildTabs() {
     tabs.push({id:'winteam', label:' WinTeam Reports'});
   }
   if (currentRole === 'warehouse') {
-    tabs.push({id:'warehouse', label:' Warehouse'});
     tabs.push({id:'distribution', label:' Distribution Log'});
   }
   if (currentRole === 'supervisor' && currentUser === 'Santiago') {
