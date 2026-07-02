@@ -908,7 +908,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
         <div class="card-title">Order Summary</div>
         <p style="font-size:12px;color:#666;margin-bottom:10px">Review account numbers below. Items highlighted in <span style="background:#fff8e1;padding:1px 6px;border-radius:3px">yellow</span> have no Imperial account mapped yet  they will go to the bulk warehouse account. Use the <strong>Override</strong> toggle to flip individual items between rebill and non-rebill.</p>
         <table class="review-table" id="imperialSummaryTable">
-          <thead><tr><th>Ship To Acct</th><th>Location</th><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivery Date</th><th>Rebill</th><th>Override</th></tr></thead>
+          <thead><tr><th>Item #</th><th>Location(s)</th><th>Description</th><th>Qty</th><th>Unit</th><th>Delivery Date</th><th>Rebill</th><th>Override</th></tr></thead>
           <tbody id="imperialSummaryBody"></tbody>
         </table>
         <div class="flex-gap mt-12">
@@ -2732,7 +2732,12 @@ async function buildImperialSummary() {
         if (locationProducts[jj][id] && locationProducts[jj][id].caseQty) { caseQty = locationProducts[jj][id].caseQty; break; }
       }
       if (!consolidated[key]) {
-        consolidated[key] = { acct: itemAcct, id, name: item.name, unit: item.unit, unitTypes: {}, totalQty: 0, isRebill, locations: [], delivDate: order.delivery_date || '', caseQty };
+        // Look up item type from catalog
+      let itemType = 'Other';
+      for (const jj of Object.keys(locationProducts)) {
+        if (locationProducts[jj][id]) { itemType = locationProducts[jj][id].type || 'Other'; break; }
+      }
+      consolidated[key] = { acct: itemAcct, id, name: item.name, unit: item.unit, unitTypes: {}, totalQty: 0, isRebill, locations: [], delivDate: order.delivery_date || '', caseQty, type: itemType };
       }
       const entry = consolidated[key];
       entry.unitTypes[unitType] = (entry.unitTypes[unitType] || 0) + (parseFloat(item.qty) || 0);
@@ -2752,42 +2757,65 @@ async function buildImperialSummary() {
     tbody.parentElement.parentElement.insertBefore(legend, tbody.parentElement);
   }
 
-  Object.entries(consolidated).forEach(([key, entry]) => {
-    const unitTypeKeys = Object.keys(entry.unitTypes);
-    const isMixed = unitTypeKeys.length > 1;
-    let qtyDisplay, conversionNote = '';
-    if (!isMixed && unitTypeKeys[0] === 'Each' && entry.caseQty) {
-      const totalEach = entry.unitTypes['Each'] || 0;
-      const cases = Math.ceil(totalEach / entry.caseQty);
-      const exactCases = totalEach / entry.caseQty;
-      qtyDisplay = cases + ' Case' + (cases !== 1 ? 's' : '');
-      if (cases > exactCases) {
-        conversionNote = ' <span style="color:#d97706;font-size:10px">(rounded up from ' + totalEach + ' Each)</span>';
-      }
-    } else if (isMixed) {
-      qtyDisplay = unitTypeKeys.map(ut => entry.unitTypes[ut] + ' ' + ut).join(' + ');
-    } else {
-      qtyDisplay = entry.totalQty + ' ' + (unitTypeKeys[0] || 'Case');
-    }
-    const locTip = entry.locations.join(', ');
-    const leftoverQty = leftoverByItem[entry.id] || 0;
-    const leftoverNote = leftoverQty > 0
-      ? '<br><span style="font-size:10px;color:#7a5a00;background:#fffbea;padding:1px 5px;border-radius:3px">' + leftoverQty + ' leftover in stock</span>'
-      : '';
-    const tr = document.createElement('tr');
-    if (isMixed) { tr.style.background = '#fff0d0'; tr.style.outline = '2px solid #f59e0b'; }
-    tr.innerHTML = '<td>' + entry.acct + '</td>' +
-      '<td title="' + locTip + '" style="cursor:help">' + (entry.locations.length > 1 ? entry.locations.length + ' locations' : entry.locations[0]) + '</td>' +
-      '<td>' + entry.id + '</td>' +
-      '<td>' + entry.name + leftoverNote + '</td>' +
-      '<td><strong>' + qtyDisplay + '</strong>' + conversionNote + (isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) MIXED</span>' : '') + '</td>' +
-      '<td>' + (entry.unit||'') + '</td>' +
-      '<td>' + (entry.delivDate || '<span style="color:var(--red)">! Set date</span>') + '</td>' +
-      '<td>' + (entry.isRebill ? '<span class="badge badge-pending">YES</span>' : 'No') + '</td>' +
-      '<td></td>';
-    tbody.appendChild(tr);
+  // Group by account, then by type within each account
+  const byAcct = {};
+  Object.values(consolidated).forEach(function(entry) {
+    if (!byAcct[entry.acct]) byAcct[entry.acct] = {};
+    const type = entry.type || 'Other';
+    if (!byAcct[entry.acct][type]) byAcct[entry.acct][type] = [];
+    byAcct[entry.acct][type].push(entry);
   });
 
+  Object.entries(byAcct).sort((a,b) => a[0].localeCompare(b[0])).forEach(function(acctEntry) {
+    const acct = acctEntry[0], byType = acctEntry[1];
+    // Account header row
+    const acctRow = document.createElement('tr');
+    acctRow.style.cssText = 'background:var(--navy);color:white';
+    acctRow.innerHTML = '<td colspan="9" style="padding:8px 10px;font-weight:700;font-size:13px">Account: ' + acct + '</td>';
+    tbody.appendChild(acctRow);
+
+    Object.entries(byType).sort((a,b) => a[0].localeCompare(b[0])).forEach(function(typeEntry) {
+      const type = typeEntry[0], entries = typeEntry[1];
+      // Type subheader row
+      const typeRow = document.createElement('tr');
+      typeRow.style.cssText = 'background:#e8f0fe';
+      typeRow.innerHTML = '<td colspan="9" style="padding:5px 10px 5px 20px;font-weight:600;font-size:12px;color:var(--navy)">' + type + '</td>';
+      tbody.appendChild(typeRow);
+
+      entries.sort((a,b) => a.name.localeCompare(b.name)).forEach(function(entry) {
+        const unitTypeKeys = Object.keys(entry.unitTypes);
+        const isMixed = unitTypeKeys.length > 1;
+        let qtyDisplay, conversionNote = '';
+        if (!isMixed && unitTypeKeys[0] === 'Each' && entry.caseQty) {
+          const totalEach = entry.unitTypes['Each'] || 0;
+          const cases = Math.ceil(totalEach / entry.caseQty);
+          const exactCases = totalEach / entry.caseQty;
+          qtyDisplay = cases + ' Case' + (cases !== 1 ? 's' : '');
+          if (cases > exactCases) conversionNote = ' <span style="color:#d97706;font-size:10px">(rounded up from ' + totalEach + ' Each)</span>';
+        } else if (isMixed) {
+          qtyDisplay = unitTypeKeys.map(ut => entry.unitTypes[ut] + ' ' + ut).join(' + ');
+        } else {
+          qtyDisplay = entry.totalQty + ' ' + (unitTypeKeys[0] || 'Case');
+        }
+        const locTip = entry.locations.join(', ');
+        const leftoverQty = leftoverByItem[entry.id] || 0;
+        const leftoverNote = leftoverQty > 0
+          ? '<br><span style="font-size:10px;color:#7a5a00;background:#fffbea;padding:1px 5px;border-radius:3px">' + leftoverQty + ' leftover in stock</span>'
+          : '';
+        const tr = document.createElement('tr');
+        if (isMixed) { tr.style.background = '#fff0d0'; tr.style.outline = '2px solid #f59e0b'; }
+        tr.innerHTML = '<td style="padding-left:24px">' + entry.id + '</td>' +
+          '<td title="' + locTip + '" style="cursor:help">' + (entry.locations.length > 1 ? entry.locations.length + ' locations' : entry.locations[0]) + '</td>' +
+          '<td>' + entry.name + leftoverNote + '</td>' +
+          '<td><strong>' + qtyDisplay + '</strong>' + conversionNote + (isMixed ? ' <span style="color:#d97706;font-size:11px;font-weight:700">(!) MIXED</span>' : '') + '</td>' +
+          '<td>' + (entry.unit||'') + '</td>' +
+          '<td>' + (entry.delivDate || '<span style="color:var(--red)">! Set date</span>') + '</td>' +
+          '<td>' + (entry.isRebill ? '<span class="badge badge-pending">YES</span>' : 'No') + '</td>' +
+          '<td></td>';
+        tbody.appendChild(tr);
+      });
+    });
+  });
   document.getElementById('imperialSummary').classList.remove('hidden');
 }
 
