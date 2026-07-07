@@ -672,6 +672,7 @@ function tileTap(screen, id) {
   else if(id==='est') loadEstWalks();
   else if(id==='supply') openSupply();
   else if(id==='wo') loadWOScreen();
+  else if(id==='wo') loadWOScreen();
   else if(id==='warehouse') openWarehouse();
   showScreen(screen);
 }
@@ -1302,7 +1303,289 @@ function recalcManual(){
 
 // ── INIT ───────────────────────────────────────────────
 loadSupervisors();
+
+// ── WORK ORDERS ────────────────────────────────────────
+async function loadWOScreen() {
+  showScreen('s-wo-home');
+  // Set today's date as default
+  const today = new Date().toISOString().split('T')[0];
+  if (document.getElementById('wo-date')) {
+    document.getElementById('wo-date').value = today;
+  }
+  await loadWOLocations();
+  await loadRecentWOs();
+}
+
+let _woLocs = [];
+
+async function loadWOLocations() {
+  try {
+    let locs;
+    if (state.supervisor.role === 'admin' || state.supervisor.role === 'manager') {
+      locs = await sbFetch('kencal_locations?active=eq.true&select=id,display_name,job_number&order=display_name');
+    } else {
+      const supLocs = await sbFetch(`kencal_supervisor_locations?supervisor=eq.${encodeURIComponent(state.supervisor.name)}&active=eq.true&select=job_number`);
+      const jobNums = supLocs.map(l => l.job_number).join(',');
+      if (!jobNums) { _woLocs = []; return; }
+      locs = await sbFetch(`kencal_locations?job_number=in.(${jobNums})&active=eq.true&select=id,display_name,job_number&order=display_name`);
+    }
+    _woLocs = locs || [];
+  } catch(e) { _woLocs = []; }
+}
+
+function filterWOLocations(query) {
+  const dropdown = document.getElementById('wo-loc-dropdown');
+  if (!query || query.length < 2) { dropdown.style.display = 'none'; return; }
+  const q = query.toLowerCase();
+  const matches = _woLocs.filter(l =>
+    (l.display_name || '').toLowerCase().includes(q) ||
+    (l.job_number || '').toLowerCase().includes(q)
+  ).slice(0, 8);
+  if (!matches.length) { dropdown.style.display = 'none'; return; }
+  dropdown.innerHTML = matches.map(l =>
+    `<div onclick="selectWOLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${l.job_number||''}')"
+      style="padding:10px 12px;border-bottom:0.5px solid var(--border);cursor:pointer;font-size:14px;">
+      <div style="font-weight:600;">${l.display_name || '—'}</div>
+      <div style="font-size:12px;color:var(--text2);">${l.job_number || ''}</div>
+    </div>`
+  ).join('');
+  dropdown.style.display = 'block';
+}
+
+function selectWOLocation(id, name, jobNumber) {
+  document.getElementById('wo-loc-search').value = name;
+  document.getElementById('wo-loc-id').value = id;
+  document.getElementById('wo-loc-name').value = name;
+  document.getElementById('wo-job-number').value = jobNumber;
+  document.getElementById('wo-loc-dropdown').style.display = 'none';
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  const dropdown = document.getElementById('wo-loc-dropdown');
+  const search = document.getElementById('wo-loc-search');
+  if (dropdown && search && !search.contains(e.target) && !dropdown.contains(e.target)) {
+    dropdown.style.display = 'none';
+  }
+});
+
+async function submitWorkOrder() {
+  const locName = document.getElementById('wo-loc-name').value;
+  const locSearch = document.getElementById('wo-loc-search').value;
+  const workDate = document.getElementById('wo-date').value;
+  const service = document.getElementById('wo-service').value;
+
+  if (!workDate) { toast('Please select a date'); return; }
+  if (!locSearch) { toast('Please select a location'); return; }
+  if (!service) { toast('Please select a service type'); return; }
+
+  const btn = document.getElementById('wo-submit-btn');
+  btn.textContent = 'Submitting…';
+  btn.disabled = true;
+
+  const payload = {
+    submitted_by: state.supervisor.name,
+    work_date: workDate,
+    job_number: document.getElementById('wo-job-number').value || null,
+    location_name: locName || locSearch,
+    service_type: service,
+    client_wo_num: document.getElementById('wo-client-num').value || null,
+    people: parseInt(document.getElementById('wo-people').value) || 1,
+    hours: parseFloat(document.getElementById('wo-hours').value) || null,
+    price: parseFloat(document.getElementById('wo-price').value) || null,
+    billable: document.getElementById('wo-billable').value,
+    notes: document.getElementById('wo-notes').value || null,
+    status: 'pending',
+  };
+
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_work_orders', {
+      method: 'POST',
+      headers: { ...HEADERS, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Save failed');
+
+    const d = new Date(workDate);
+    const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    document.getElementById('wo-confirm-details').textContent =
+      `${payload.location_name} · ${service} · ${dateLabel}${payload.client_wo_num ? ' · WO# ' + payload.client_wo_num : ''}`;
+
+    showScreen('s-wo-confirm');
+    toast('Work order submitted ✓');
+  } catch(e) {
+    toast('Error submitting — check connection');
+    btn.textContent = 'Submit Work Order';
+    btn.disabled = false;
+  }
+}
+
+function resetWOForm() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('wo-date').value = today;
+  document.getElementById('wo-loc-search').value = '';
+  document.getElementById('wo-loc-id').value = '';
+  document.getElementById('wo-loc-name').value = '';
+  document.getElementById('wo-job-number').value = '';
+  document.getElementById('wo-service').value = '';
+  document.getElementById('wo-client-num').value = '';
+  document.getElementById('wo-people').value = '1';
+  document.getElementById('wo-hours').value = '';
+  document.getElementById('wo-price').value = '';
+  document.getElementById('wo-billable').value = 'Yes';
+  document.getElementById('wo-notes').value = '';
+  const btn = document.getElementById('wo-submit-btn');
+  btn.textContent = 'Submit Work Order';
+  btn.disabled = false;
+}
+
+async function loadRecentWOs() {
+  const list = document.getElementById('wo-recent-list');
+  try {
+    const data = await sbFetch(
+      `kencal_work_orders?submitted_by=eq.${encodeURIComponent(state.supervisor.name)}&order=created_at.desc&limit=10`
+    );
+    if (!data.length) {
+      list.innerHTML = '<p style="color:var(--text2);font-size:14px;padding:8px;">No work orders submitted yet.</p>';
+      return;
+    }
+    list.innerHTML = data.map(wo => {
+      const d = new Date(wo.work_date);
+      const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const priceLabel = wo.price ? ` · $${parseFloat(wo.price).toLocaleString('en-US', {minimumFractionDigits:2})}` : '';
+      const woLabel = wo.client_wo_num ? ` · WO# ${wo.client_wo_num}` : '';
+      const statusCls = wo.status === 'approved' ? 'badge-green' : wo.status === 'rejected' ? 'badge-red' : 'badge-amber';
+      return `<div class="hist-row">
+        <div class="hist-score" style="background:#FFF0E0;color:#C8591A;font-size:18px;">📋</div>
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;">${wo.location_name || '—'}</div>
+          <div style="font-size:12px;color:var(--text2);">${dateLabel} · ${wo.service_type || '—'}${priceLabel}${woLabel}</div>
+        </div>
+        <span class="badge ${statusCls}">${wo.status || 'pending'}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<p style="color:var(--fail);font-size:13px;padding:8px;">Error loading work orders.</p>';
+  }
+}
+
 </script>
+
+<!-- ══════════════════════════════════════════
+     WORK ORDERS SCREEN
+══════════════════════════════════════════ -->
+<div class="screen" id="s-wo-home">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-home')">‹</button>
+    <div class="top-bar-title">Work Orders</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <button class="btn-primary" onclick="showScreen('s-wo-new')">+ New Work Order</button>
+    <div class="field-label" style="margin-top:4px;">Recent submissions</div>
+    <div id="wo-recent-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
+<div class="screen" id="s-wo-new">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-wo-home')">‹</button>
+    <div class="top-bar-title">New Work Order</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <div class="card">
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Date work performed</label>
+        <input type="date" id="wo-date">
+      </div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Location</label>
+        <div style="position:relative;">
+          <input type="text" id="wo-loc-search" placeholder="Search locations…" oninput="filterWOLocations(this.value)" autocomplete="off">
+          <div id="wo-loc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:0.5px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        </div>
+        <input type="hidden" id="wo-loc-id">
+        <input type="hidden" id="wo-loc-name">
+        <input type="hidden" id="wo-job-number">
+      </div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Service type</label>
+        <select id="wo-service">
+          <option value="">— Select service —</option>
+          <option>General cleaning</option>
+          <option>Deep clean</option>
+          <option>Post-construction clean</option>
+          <option>Window cleaning</option>
+          <option>Carpet cleaning</option>
+          <option>Floor stripping / waxing</option>
+          <option>Pressure washing</option>
+          <option>Snow removal</option>
+          <option>Landscaping</option>
+          <option>Painting</option>
+          <option>Handyman / repairs</option>
+          <option>Emergency / remediation</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Client WO # <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
+        <input type="text" id="wo-client-num" placeholder="e.g. CV-2026-1042">
+      </div>
+    </div>
+    <div class="card">
+      <div class="input-row" style="margin-bottom:8px;">
+        <div class="input-group">
+          <label class="field-label">People</label>
+          <input type="number" id="wo-people" value="1" min="1">
+        </div>
+        <div class="input-group">
+          <label class="field-label">Hours</label>
+          <input type="number" id="wo-hours" placeholder="0.0" step="0.5" min="0">
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="input-group">
+          <label class="field-label">Price ($)</label>
+          <input type="number" id="wo-price" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="input-group">
+          <label class="field-label">Billable</label>
+          <select id="wo-billable">
+            <option value="Yes">Yes</option>
+            <option value="Contract">Contract</option>
+            <option value="Weekly">Weekly</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="input-group">
+        <label class="field-label">Notes <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
+        <textarea id="wo-notes" rows="3" placeholder="Describe the work performed, any issues, or special instructions…" style="resize:none;"></textarea>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="submitWorkOrder()" id="wo-submit-btn">Submit Work Order</button>
+    <button class="btn-secondary" onclick="showScreen('s-wo-home')">Cancel</button>
+  </div>
+</div>
+
+<div class="screen" id="s-wo-confirm">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-wo-home')">‹</button>
+    <div class="top-bar-title">Submitted</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body" style="align-items:center;text-align:center;padding-top:40px;">
+    <div style="font-size:64px;margin-bottom:16px;">✅</div>
+    <div style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px;">Work order submitted</div>
+    <div style="font-size:14px;color:var(--text2);margin-bottom:32px;" id="wo-confirm-details"></div>
+    <button class="btn-primary" onclick="resetWOForm();showScreen('s-wo-new')">+ Add another</button>
+    <button class="btn-secondary" onclick="showScreen('s-home')">Back to home</button>
+  </div>
+</div>
+
 
 <!-- ══════════════════════════════════════════
      WORK ORDERS SCREEN
