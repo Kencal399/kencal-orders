@@ -1340,7 +1340,7 @@ function filterWOLocations(query) {
   const matches = _woLocs.filter(l =>
     (l.display_name || '').toLowerCase().includes(q) ||
     (l.job_number || '').toLowerCase().includes(q)
-  ).slice(0, 8);
+  ).slice(0, 35);
   if (!matches.length) { dropdown.style.display = 'none'; return; }
   dropdown.innerHTML = matches.map(l =>
     `<div onclick="selectWOLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${l.job_number||''}')"
