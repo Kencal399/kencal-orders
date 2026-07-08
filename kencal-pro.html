@@ -1218,6 +1218,184 @@ function recalcManual(){
 // ── INIT ───────────────────────────────────────────────
 loadSupervisors();
 
+// ── RESEND EMAIL INTEGRATION ───────────────────────────
+const RESEND_API_KEY = 're_ByzLtXo9_HwXLdzFXrYvHqy5a8YKbSdxP';
+const EMAIL_TO = 'rstorey@kencalmaintenance.com';
+const EMAIL_FROM = 'Kencal Pro <onboarding@resend.dev>';
+
+async function sendEmail(subject, htmlBody) {
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to: EMAIL_TO,
+        subject: subject,
+        html: htmlBody
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('Email send failed:', data);
+      return false;
+    }
+    return true;
+  } catch(e) {
+    console.error('Email error:', e);
+    return false;
+  }
+}
+
+function emailHeader(title, subtitle) {
+  return `
+    <div style="background:#1B2A4A;padding:24px 32px;border-radius:8px 8px 0 0;">
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+        <div style="font-size:11px;font-weight:700;color:#C8942A;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:4px;">KENCAL MAINTENANCE CORPORATION</div>
+        <div style="font-size:22px;font-weight:700;color:#ffffff;margin-bottom:2px;">${title}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.6);">${subtitle}</div>
+      </div>
+    </div>`;
+}
+
+function emailFooter() {
+  const now = new Date();
+  return `
+    <div style="background:#F4F5F7;padding:16px 32px;border-radius:0 0 8px 8px;border-top:1px solid #E0E0E0;">
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#999;">
+        Sent via Kencal Pro · ${now.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} at ${now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+      </div>
+    </div>`;
+}
+
+function emailRow(label, value) {
+  if (!value) return '';
+  return `
+    <tr>
+      <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.07em;padding:8px 0 4px;border-bottom:1px solid #F0F0F0;width:35%;vertical-align:top;">${label}</td>
+      <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1A1A1A;padding:8px 0 4px 16px;border-bottom:1px solid #F0F0F0;vertical-align:top;">${value}</td>
+    </tr>`;
+}
+
+// ── WORK ORDER EMAIL ───────────────────────────────────
+async function sendWOEmail(wo) {
+  const workDate = new Date(wo.work_date);
+  const dateLabel = workDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+  const priceLabel = wo.price ? `$${parseFloat(wo.price).toLocaleString('en-US',{minimumFractionDigits:2})}` : '—';
+  const subject = `Work Order: ${wo.location_name} — ${workDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+
+  const html = `
+    <div style="max-width:600px;margin:0 auto;border:1px solid #E0E0E0;border-radius:8px;overflow:hidden;">
+      ${emailHeader('Work Order Submitted', `Submitted by ${wo.submitted_by}`)}
+      <div style="padding:24px 32px;background:#ffffff;">
+        <table style="width:100%;border-collapse:collapse;">
+          ${emailRow('Location', wo.location_name)}
+          ${emailRow('Date of work', dateLabel)}
+          ${emailRow('Service type', wo.service_type)}
+          ${emailRow('Client WO #', wo.client_wo_num)}
+          ${emailRow('People', wo.people)}
+          ${emailRow('Hours', wo.hours)}
+          ${emailRow('Price', priceLabel)}
+          ${emailRow('Billable', wo.billable)}
+          ${emailRow('Submitted by', wo.submitted_by)}
+          ${wo.notes ? emailRow('Notes', `<em>${wo.notes}</em>`) : ''}
+        </table>
+      </div>
+      ${emailFooter()}
+    </div>`;
+
+  const sent = await sendEmail(subject, html);
+  if (sent) console.log('WO email sent');
+  return sent;
+}
+
+// ── QC REPORT EMAIL ────────────────────────────────────
+async function sendQCEmail() {
+  const sup = state.supervisor;
+  const loc = state.qcLocation;
+  const score = state._qcOverallScore;
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+  const subject = `QC Inspection: ${loc?.name || '—'} — Score ${score}/100 — ${now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+
+  const w = {pass:1, attn:0.5, fail:0};
+  const scoreColor = score >= 90 ? '#3B6D11' : score >= 75 ? '#854F0B' : '#A32D2D';
+  const scoreBg = score >= 90 ? '#EAF3DE' : score >= 75 ? '#FAEEDA' : '#FCEBEB';
+  const grade = score >= 95 ? 'Excellent' : score >= 85 ? 'Good standing' : score >= 75 ? 'Needs attention' : 'Below standard';
+
+  // Build room scores rows
+  let roomRows = '';
+  let issueItems = '';
+
+  state.qcRooms.forEach(room => {
+    const data = state.qcRoomData[room] || {};
+    const items = getChecklistForRoom(room);
+    const rated = Object.keys(data).filter(k => data[k].rating && data[k].rating !== 'na');
+    const roomScore = rated.length ? Math.round((rated.reduce((a,k) => a + (w[data[k].rating]||0), 0) / rated.length) * 100) : null;
+    const rColor = roomScore >= 90 ? '#3B6D11' : roomScore >= 75 ? '#854F0B' : '#A32D2D';
+    const rBg = roomScore >= 90 ? '#EAF3DE' : roomScore >= 75 ? '#FAEEDA' : '#FCEBEB';
+
+    roomRows += `
+      <tr>
+        <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1A1A1A;padding:8px 0;border-bottom:1px solid #F0F0F0;">${room}</td>
+        <td style="text-align:right;padding:8px 0;border-bottom:1px solid #F0F0F0;">
+          ${roomScore !== null ? `<span style="background:${rBg};color:${rColor};font-weight:700;font-size:13px;padding:3px 10px;border-radius:99px;">${roomScore}</span>` : '<span style="color:#999;font-size:13px;">Not rated</span>'}
+        </td>
+      </tr>`;
+
+    Object.keys(data).forEach(k => {
+      if (data[k].rating === 'attn' || data[k].rating === 'fail') {
+        const flag = data[k].rating === 'fail' ? '✕' : '⚠';
+        const flagColor = data[k].rating === 'fail' ? '#A32D2D' : '#854F0B';
+        issueItems += `
+          <div style="padding:10px 14px;background:#FCEBEB;border-radius:8px;margin-bottom:8px;">
+            <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px;">${room}</div>
+            <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#501313;">${flag} ${items[k] || ''}${data[k].note ? ' — ' + data[k].note : ''}</div>
+          </div>`;
+      }
+    });
+  });
+
+  const html = `
+    <div style="max-width:600px;margin:0 auto;border:1px solid #E0E0E0;border-radius:8px;overflow:hidden;">
+      ${emailHeader('QC Inspection Report', `${loc?.name || '—'} · ${dateLabel}`)}
+      
+      <div style="background:#1B2A4A;padding:0 32px 24px;">
+        <div style="display:inline-block;background:${scoreBg};border-radius:12px;padding:16px 24px;text-align:center;min-width:120px;">
+          <div style="font-size:48px;font-weight:700;color:${scoreColor};line-height:1;">${score}</div>
+          <div style="font-size:11px;color:${scoreColor};font-weight:600;text-transform:uppercase;letter-spacing:0.07em;margin-top:2px;">${grade}</div>
+          <div style="font-size:11px;color:#999;margin-top:2px;">out of 100</div>
+        </div>
+      </div>
+
+      <div style="padding:24px 32px;background:#ffffff;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:700;color:#1B2A4A;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">Room Scores</div>
+        <table style="width:100%;border-collapse:collapse;">${roomRows}</table>
+      </div>
+
+      ${issueItems ? `
+      <div style="padding:0 32px 24px;background:#ffffff;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">⚠ Items Needing Attention</div>
+        ${issueItems}
+      </div>` : ''}
+
+      <div style="padding:16px 32px 24px;background:#ffffff;border-top:1px solid #F0F0F0;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+          <div style="font-size:14px;font-weight:600;color:#1A1A1A;">${sup.name}</div>
+          <div style="font-size:12px;color:#666;">Field Supervisor · Kencal Maintenance Corporation</div>
+        </div>
+      </div>
+      ${emailFooter()}
+    </div>`;
+
+  const sent = await sendEmail(subject, html);
+  if (sent) console.log('QC email sent');
+  return sent;
+}
+
 
 // ── WORK ORDERS v2 ─────────────────────────────────────
 let _woLocs = [];
@@ -1425,6 +1603,8 @@ async function submitWorkOrder() {
       if (!res.ok) throw new Error('Save failed');
       document.getElementById('wo-confirm-title').textContent = 'Submitted';
       document.getElementById('wo-confirm-heading').textContent = 'Work order submitted';
+      // Send email notification
+      sendWOEmail(payload);
     }
 
     const d = new Date(workDate);
