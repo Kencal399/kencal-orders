@@ -1245,6 +1245,7 @@ const EMAIL_TO = 'rstorey@kencalmaintenance.com';
 const EMAIL_FROM = 'Kencal Pro <onboarding@resend.dev>';
 
 async function sendEmail(subject, htmlBody) {
+  toast('Sending email…');
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -1262,11 +1263,14 @@ async function sendEmail(subject, htmlBody) {
     const data = await res.json();
     if (!res.ok) {
       console.error('Email send failed:', data);
+      toast('Email failed: ' + (data.message || res.status));
       return false;
     }
+    toast('Email sent ✓');
     return true;
   } catch(e) {
     console.error('Email error:', e);
+    toast('Email error: ' + e.message);
     return false;
   }
 }
@@ -1820,12 +1824,16 @@ async function handleWOPhotos(input) {
       // Upload to Supabase
       const publicUrl = await uploadPhotoToSupabase(file, 'kencal-wo-photos');
       _woPendingPhotos.push(publicUrl);
+      status.textContent = `Uploading… ${_woPendingPhotos.length} done`;
     } catch(e) {
       console.error('Photo upload error:', e);
-      toast('Photo upload failed — check connection');
+      status.textContent = `Upload failed: ${e.message}`;
+      toast(`Photo upload failed: ${e.message}`);
     }
   }
-  status.textContent = `${_woPendingPhotos.length} photo${_woPendingPhotos.length !== 1 ? 's' : ''} uploaded ✓`;
+  if (_woPendingPhotos.length) {
+    status.textContent = `${_woPendingPhotos.length} photo${_woPendingPhotos.length !== 1 ? 's' : ''} uploaded ✓`;
+  }
   input.value = '';
 }
 
