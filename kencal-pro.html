@@ -1307,11 +1307,15 @@ async function sendWOEmail(wo) {
   const workDate = new Date(wo.work_date);
   const dateLabel = workDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
   const priceLabel = wo.price ? `$${parseFloat(wo.price).toLocaleString('en-US',{minimumFractionDigits:2})}` : '—';
-  const subject = `Work Order: ${wo.location_name} — ${workDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+  const isEdit = wo._edited === true;
+  const subject = isEdit
+    ? `Work Order Updated: ${wo.location_name} — ${workDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`
+    : `Work Order: ${wo.location_name} — ${workDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
 
   const html = `
     <div style="max-width:600px;margin:0 auto;border:1px solid #E0E0E0;border-radius:8px;overflow:hidden;">
-      ${emailHeader('Work Order Submitted', `Submitted by ${wo.submitted_by}`)}
+      ${emailHeader(isEdit ? 'Work Order Updated' : 'Work Order Submitted', `${isEdit ? 'Edited' : 'Submitted'} by ${wo.submitted_by}`)}
+      ${isEdit ? `<div style="background:#FAEEDA;padding:10px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#854F0B;border-bottom:1px solid #F0C060;">⚠ This work order was edited by ${wo.submitted_by}</div>` : ''}
       <div style="padding:24px 32px;background:#ffffff;">
         <table style="width:100%;border-collapse:collapse;">
           ${emailRow('Location', wo.location_name)}
@@ -1647,6 +1651,9 @@ async function submitWorkOrder() {
       }
       document.getElementById('wo-confirm-title').textContent = 'Changes saved';
       document.getElementById('wo-confirm-heading').textContent = 'Work order updated';
+      // Send email notification for edit
+      payload._edited = true;
+      sendWOEmail(payload);
     } else {
       // New submission
       payload.created_at = new Date().toISOString();
