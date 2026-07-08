@@ -1247,23 +1247,20 @@ const EMAIL_FROM = 'Kencal Pro <onboarding@resend.dev>';
 async function sendEmail(subject, htmlBody) {
   toast('Sending email…');
   try {
-    const res = await fetch('https://api.resend.com/emails', {
+    // Route through Supabase Edge Function to avoid iOS CORS issues
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M';
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${ANON_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        from: EMAIL_FROM,
-        to: EMAIL_TO,
-        subject: subject,
-        html: htmlBody
-      })
+      body: JSON.stringify({ subject, html: htmlBody })
     });
     const data = await res.json();
     if (!res.ok) {
       console.error('Email send failed:', data);
-      toast('Email failed: ' + (data.message || res.status));
+      toast('Email failed: ' + (data.error || res.status));
       return false;
     }
     toast('Email sent ✓');
