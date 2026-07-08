@@ -982,7 +982,7 @@ async function handleQCPhoto(input){
     const path=(state.supervisor.name.replace(/ +/g,'_'))+'/'+filename;
     const res=await fetch(SUPABASE_URL+'/storage/v1/object/kencal-inspection-photos/'+path,{
       method:'POST',
-      headers:{'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
+      headers:{'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M','Content-Type':file.type||'image/jpeg','x-upsert':'true'},
       body:file
     });
     if(!res.ok) throw new Error('Upload failed');
@@ -1776,12 +1776,13 @@ async function uploadPhotoToSupabase(file, bucket) {
   const filename = `${Date.now()}_${Math.random().toString(36).substr(2,6)}.${ext}`;
   const path = `${state.supervisor.name.replace(/\s+/g,'_')}/${filename}`;
   
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M';
   const res = await fetch(
     `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`,
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Authorization': `Bearer ${ANON_KEY}`,
         'Content-Type': file.type || 'image/jpeg',
         'x-upsert': 'true'
       },
