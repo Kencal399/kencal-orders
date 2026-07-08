@@ -1634,23 +1634,33 @@ async function submitWorkOrder() {
   try {
     if (editId) {
       // Update existing
+      const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M';
+      const PATCH_HEADERS = {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY};
       const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_work_orders?id=eq.${editId}`, {
         method: 'PATCH',
-        headers: HEADERS,
+        headers: PATCH_HEADERS,
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Update failed');
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error('Update failed: ' + errText);
+      }
       document.getElementById('wo-confirm-title').textContent = 'Changes saved';
       document.getElementById('wo-confirm-heading').textContent = 'Work order updated';
     } else {
       // New submission
       payload.created_at = new Date().toISOString();
+      const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M';
+      const POST_HEADERS = {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Prefer':'return=representation'};
       const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_work_orders', {
         method: 'POST',
-        headers: { ...HEADERS, 'Prefer': 'return=representation' },
+        headers: POST_HEADERS,
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error('Save failed: ' + errText);
+      }
       document.getElementById('wo-confirm-title').textContent = 'Submitted';
       document.getElementById('wo-confirm-heading').textContent = 'Work order submitted';
       // Send email notification
