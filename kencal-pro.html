@@ -1449,6 +1449,10 @@ async function sendQCEmail() {
   return sent;
 }
 
+// Override HEADERS with correct anon key for all Supabase operations
+const KENCAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuYXl1anV2bXp2ZnFueGZ1dHBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDcwNzUsImV4cCI6MjA5MzAyMzA3NX0.164133UJfvLPYjartmbmHygKCBZlv0K2X4HTR_iEe-M';
+const HEADERS = {'Content-Type':'application/json','apikey':KENCAL_ANON_KEY,'Authorization':'Bearer '+KENCAL_ANON_KEY};
+
 
 // ── WORK ORDERS v2 ─────────────────────────────────────
 let _woLocs = [];
