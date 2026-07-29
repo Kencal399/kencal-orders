@@ -2749,6 +2749,7 @@ function printOrderCard(orderId) {
     '<div class="meta">Date: ' + dateStr + '</div>' +
     '<div class="meta">Ref: ' + order.order_ref + ' | Status: ' + order.status + '</div>' +
     (order.po_number ? '<div class="po">PO: ' + order.po_number + '</div>' : '') +
+    (order.order_month ? '<div class="po">Order Month: ' + order.order_month + '</div>' : '') +
     (order.notes ? '<div class="note">Notes: ' + order.notes + '</div>' : '') +
     '<div class="divider"></div>' +
     '<table><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th><th>Rebill</th></tr></thead>' +
