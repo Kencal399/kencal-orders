@@ -1550,11 +1550,17 @@ function renderOrderCard(order, view) {
       maryControls = '<div class="alert alert-info mb-8" style="font-size:12px">This order has been sent to Imperial and is locked.</div>'
         + '<button class="btn btn-outline btn-sm" style="margin-bottom:8px" onclick="printOrderCard(' + order.id + ')">Print</button>';
     } else {
+      const monthOpts = ['January','February','March','April','May','June','July','August','September','October','November','December']
+          .map(function(m) { return '<option value="' + m + '"' + (order.order_month===m?' selected':'') + '>' + m + '</option>'; }).join('');
       const poField = '<div style="margin:8px 0;display:flex;align-items:center;gap:8px">'
         + '<label style="font-size:12px;font-weight:600;min-width:28px">PO:</label>'
         + '<input type="text" value="' + (order.po_number||'') + '" placeholder="Optional PO number"'
         + ' style="flex:1;padding:5px 8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px"'
-        + ' onchange="updateOrderPO(' + order.id + ', this.value)"></div>';
+        + ' onchange="updateOrderPO(' + order.id + ', this.value)">'
+        + '<label style="font-size:12px;font-weight:600;white-space:nowrap;margin-left:4px">Month:</label>'
+        + '<select style="padding:5px 8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:12px"'
+        + ' onchange="updateOrderMonth(' + order.id + ', this.value)">'
+        + '<option value="">-- Month --</option>' + monthOpts + '</select></div>';
       let rebillHtml = '';
       if (hasRebill) {
         const rebillAcct = (IMPERIAL_JOB_MAP[order.job_number] && IMPERIAL_JOB_MAP[order.job_number].rebill) || 'N/A';
@@ -2694,6 +2700,14 @@ async function updateItemFromStock(orderId, itemId, isFromStock) {
     await sb.update('kencal_orders', { items: order.items, updated_at: new Date().toISOString() }, { id: order.id });
     refreshOrderCard(orderId);
   } catch(e) { console.error('Item fromStock update failed:', e); }
+}
+
+async function updateOrderMonth(orderId, month) {
+  try {
+    await sb.update('kencal_orders', { order_month: month }, { id: orderId });
+    const order = (maryOrders || []).find(o => String(o.id) === String(orderId));
+    if (order) order.order_month = month;
+  } catch(e) { console.error('Month update failed:', e); }
 }
 
 async function updateOrderPO(orderId, poValue) {
