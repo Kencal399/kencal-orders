@@ -867,6 +867,7 @@ async function loadInitialData() {
       populateCreateOrderLocations();
     } else if (currentRole === 'warehouse') {
       await loadWarehouseOrders();
+      buildWarehouseItemIndex();
     }
   } catch(e) {
     console.error('loadInitialData error:', e);
@@ -3476,6 +3477,9 @@ function searchDistItems(query) {
   const results = document.getElementById('distItemResults');
   distSelectedItem = null;
   document.getElementById('distSelectedItemBadge').textContent = 'No item selected';
+
+  // Rebuild index if empty
+  if (Object.keys(allWarehouseItems).length === 0) buildWarehouseItemIndex();
 
   if (!query || query.length < 2) { results.style.display = 'none'; return; }
 
