@@ -1140,10 +1140,11 @@ function buildCatalogForm(containerId, qtyObj, job) {
       inp.dataset.unit = item.unit;
       inp.dataset.type = item.type || 'Other';
 
-      var equipWords = ['vacuum','vac ','broom','mop ','bucket','cart','dispenser',
+      var equipWords = ['vacuum','vac ','broom','bucket','cart','dispenser',
         'uniform','machine','equipment','battery','batteries','squeegee','dustpan',
         'shelf rack','latching','tool','magnet','belt','snow','shovel',
-        'cord ','brush','duster','polo','jacket','coat','pail','trash can','caddy'];
+        'cord ','brush','duster','polo','jacket','coat','pail','trash can','caddy',
+        'mop handle','mop frame','mop bucket','wet mop stick'];
       var descLow = (item.desc||'').toLowerCase();
       var isEquip = equipWords.some(function(w){ return descLow.indexOf(w.trim())!==-1; });
       var unitToggle = null;
