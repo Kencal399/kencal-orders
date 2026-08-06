@@ -1018,7 +1018,9 @@ function buildSupForm() {
     opt.value = currentUser;
     opt.textContent = currentUser;
     sel.appendChild(opt);
+    sel._skipChange = true;
     sel.value = currentUser;
+    sel._skipChange = false;
     onSupNameChange();
   } else {
     Object.keys(SUPERVISOR_LOCATIONS).sort().forEach(name => {
@@ -1030,7 +1032,9 @@ function buildSupForm() {
 }
 
 function onSupNameChange() {
-  const name = document.getElementById('supName').value;
+  const sel = document.getElementById('supName');
+  if (sel && sel._skipChange) { sel._skipChange = false; return; }
+  const name = sel ? sel.value : '';
   const locSel = document.getElementById('supLocation');
   locSel.innerHTML = '<option value="">-- Select location --</option>';
   document.getElementById('supJobInfo').classList.add('hidden');
