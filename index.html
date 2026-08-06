@@ -1053,6 +1053,7 @@ function onSupNameChange() {
     const opt = document.createElement('option');
     opt.value = l.job;
     opt.textContent = `${l.name} (${l.job})`;
+    console.log('Adding to dropdown:', l.job, l.name, 'total options now:', locSel.options.length);
     locSel.appendChild(opt);
   });
 
@@ -3484,7 +3485,6 @@ function searchDistItems(query) {
   distSelectedItem = null;
   document.getElementById('distSelectedItemBadge').textContent = 'No item selected';
 
-  // Rebuild index if empty
   if (Object.keys(allWarehouseItems).length === 0) buildWarehouseItemIndex();
 
   if (!query || query.length < 2) { results.style.display = 'none'; return; }
