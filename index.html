@@ -1041,8 +1041,9 @@ function onSupNameChange() {
 
   if (!name) return;
   const jobs = SUPERVISOR_LOCATIONS[name] || [];
+  const seen = new Set();
   const locs = jobs.map(j => ({ job: j, name: LOCATION_NAMES[j] || j }))
-                   .filter(l => l.name)
+                   .filter(l => { if (!l.name || seen.has(l.job)) return false; seen.add(l.job); return true; })
                    .sort((a,b) => a.name.localeCompare(b.name));
   locs.forEach(l => {
     const opt = document.createElement('option');
