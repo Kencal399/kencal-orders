@@ -170,6 +170,35 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
 .flag-box.warn{background:var(--attn-bg);color:#633806;}
 .flag-box.fail-flag{background:var(--fail-bg);color:#501313;}
 .flag-box.pass-flag{background:var(--pass-bg);color:#27500A;}
+
+/* ── Receipts PDF report (print) ───────────────────── */
+#rcpt-print-container{display:none;}
+.rprt-page{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1A1A1A;max-width:900px;margin:0 auto;}
+.rprt-header{background:#1B2A4A;color:#fff;padding:22px 28px;border-radius:8px 8px 0 0;}
+.rprt-header .brand{font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#C8942A;margin-bottom:4px;}
+.rprt-header .title{font-size:22px;font-weight:700;}
+.rprt-header .sub{font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px;}
+.rprt-section{margin:18px 0;}
+.rprt-section h3{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:#1B2A4A;border-bottom:2px solid #C8942A;padding-bottom:4px;margin-bottom:10px;}
+.rprt-table{width:100%;border-collapse:collapse;font-size:12px;}
+.rprt-table th{background:#F4F5F7;text-align:left;padding:6px 8px;border-bottom:1px solid #ccc;font-weight:700;}
+.rprt-table td{padding:6px 8px;border-bottom:0.5px solid #E0E0E0;}
+.rprt-table tr.total-row td{border-top:2px solid #1B2A4A;font-weight:700;}
+.rprt-check{display:flex;gap:24px;padding:14px 18px;background:#F4F5F7;border-radius:8px;font-size:14px;}
+.rprt-check .amt{font-size:20px;font-weight:700;color:#1B2A4A;}
+.rprt-check .variance-bad{color:#A32D2D;font-weight:700;}
+.rprt-cardholder-block{page-break-inside:avoid;margin-bottom:14px;}
+.rprt-cardholder-block h4{background:#1B2A4A;color:#fff;padding:6px 10px;font-size:13px;border-radius:6px;margin-bottom:8px;}
+.rprt-receipt{display:flex;gap:12px;padding:10px;border:0.5px solid #E0E0E0;border-radius:8px;margin-bottom:8px;page-break-inside:avoid;}
+.rprt-receipt .details{flex:1;font-size:12px;line-height:1.6;}
+.rprt-receipt .details b{color:#1B2A4A;}
+.rprt-receipt .photos{display:flex;gap:6px;flex-wrap:wrap;max-width:220px;}
+.rprt-receipt .photos img{width:100px;height:100px;object-fit:cover;border-radius:6px;border:1px solid #ccc;}
+@media print {
+  body.printing-receipts-report > *:not(#rcpt-print-container){display:none !important;}
+  body.printing-receipts-report #rcpt-print-container{display:block !important;}
+  .rprt-cardholder-block{break-inside:avoid;}
+}
 </style>
 </head>
 <body>
@@ -1890,35 +1919,38 @@ async function loadReceiptsScreen() {
 
 async function loadReceiptLocations() {
   try {
-    let locs;
-    if (state.supervisor.role === 'admin' || state.supervisor.role === 'manager') {
-      locs = await sbFetch('kencal_locations?active=eq.true&select=id,display_name,job_number&order=display_name');
-    } else {
-      const supLocs = await sbFetch(`kencal_supervisor_locations?supervisor=eq.${encodeURIComponent(state.supervisor.name)}&active=eq.true&select=job_number`);
-      const jobNums = supLocs.map(l => l.job_number).join(',');
-      if (!jobNums) { _rcptLocs = []; return; }
-      locs = await sbFetch(`kencal_locations?job_number=in.(${jobNums})&active=eq.true&select=id,display_name,job_number&order=display_name`);
-    }
+    // Receipts intentionally search ALL active jobs/locations, regardless of
+    // who's formally assigned to them in kencal_supervisor_locations — coding
+    // an expense to the right job shouldn't be gated by Work Order assignment.
+    const locs = await sbFetch('kencal_locations?active=eq.true&select=id,display_name,job_number&order=display_name');
     _rcptLocs = locs || [];
   } catch(e) { _rcptLocs = []; }
 }
 
 function filterReceiptLocations(query) {
   const dropdown = document.getElementById('rcpt-loc-dropdown');
-  if (!query || query.length < 2) { dropdown.style.display = 'none'; return; }
+  if (!query || query.length < 1) { dropdown.style.display = 'none'; return; }
   const q = query.toLowerCase();
   const matches = _rcptLocs.filter(l =>
     (l.display_name || '').toLowerCase().includes(q) ||
     (l.job_number || '').toLowerCase().includes(q)
   ).slice(0, 35);
-  if (!matches.length) { dropdown.style.display = 'none'; return; }
+  const manualRow = `<div onclick="useManualJobEntry()"
+      style="padding:10px 12px;border-top:${matches.length ? '1px' : '0.5px'} solid var(--border);cursor:pointer;font-size:13px;color:var(--navy);font-weight:600;background:#F9FAFB;">
+      ✎ Can't find it? Enter job/location manually
+    </div>`;
+  if (!matches.length) {
+    dropdown.innerHTML = `<div style="padding:10px 12px;font-size:13px;color:var(--text2);">No matches for "${query.replace(/</g,'')}"</div>` + manualRow;
+    dropdown.style.display = 'block';
+    return;
+  }
   dropdown.innerHTML = matches.map(l =>
     `<div onclick="selectReceiptLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${l.job_number||''}')"
       style="padding:10px 12px;border-bottom:0.5px solid var(--border);cursor:pointer;font-size:14px;">
       <div style="font-weight:600;">${l.display_name || '—'}</div>
       <div style="font-size:12px;color:var(--text2);">${l.job_number || ''}</div>
     </div>`
-  ).join('');
+  ).join('') + manualRow;
   dropdown.style.display = 'block';
 }
 
@@ -1927,7 +1959,27 @@ function selectReceiptLocation(id, name, jobNumber) {
   document.getElementById('rcpt-loc-id').value = id;
   document.getElementById('rcpt-loc-name').value = name;
   document.getElementById('rcpt-job-number').value = jobNumber;
+  document.getElementById('rcpt-needs-match').value = '';
   document.getElementById('rcpt-loc-dropdown').style.display = 'none';
+  document.getElementById('rcpt-manual-job-row').style.display = 'none';
+}
+
+function useManualJobEntry() {
+  document.getElementById('rcpt-loc-dropdown').style.display = 'none';
+  document.getElementById('rcpt-loc-id').value = '';
+  document.getElementById('rcpt-manual-job-row').style.display = 'block';
+  document.getElementById('rcpt-manual-job-text').value = document.getElementById('rcpt-loc-search').value || '';
+  document.getElementById('rcpt-manual-job-text').focus();
+}
+
+function applyManualJobEntry() {
+  const typed = document.getElementById('rcpt-manual-job-text').value.trim();
+  document.getElementById('rcpt-loc-search').value = typed;
+  document.getElementById('rcpt-loc-name').value = typed;
+  document.getElementById('rcpt-job-number').value = '';
+  document.getElementById('rcpt-loc-id').value = '';
+  document.getElementById('rcpt-needs-match').value = typed ? 'true' : '';
+  document.getElementById('rcpt-manual-job-row').style.display = 'none';
 }
 
 document.addEventListener('click', function(e) {
@@ -1938,15 +1990,111 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// Meal/entertainment GL lines — never shown directly in the picker. A
+// cardholder answers a few plain questions (onCategorySelect -> the meal
+// wizard) and this maps their answers to the correct one automatically.
+const MEAL_WIZARD_CATEGORIES = [
+  'Meals - Direct (Job Cost)',
+  'Potential Business Meals (50% Deductible)',
+  'Meals Expense (50% Deductible)',
+  'Office Celebration Meals (100% Deductible)',
+  'Entertainment (Non-Deductible)',
+  'Nondeductible Meals'
+];
+const MEAL_WIZARD_SENTINEL = '__MEALS_WIZARD__';
+
 async function loadReceiptCategories() {
   try {
-    _rcptCategories = await sbFetch('kencal_gl_mapping?select=category,gl_account,sort_order&order=sort_order');
+    _rcptCategories = await sbFetch('kencal_gl_mapping?select=category,gl_account,admin_only,sort_order&order=sort_order');
   } catch(e) { _rcptCategories = []; }
   const sel = document.getElementById('rcpt-category');
-  if (sel) {
-    sel.innerHTML = '<option value="">— Select category —</option>' +
-      _rcptCategories.map(c => `<option value="${c.category.replace(/"/g,'&quot;')}">${c.category}</option>`).join('');
+  if (!sel) return;
+  const cardholderCats = _rcptCategories.filter(c => !c.admin_only && !MEAL_WIZARD_CATEGORIES.includes(c.category));
+  let options = '<option value="">— Select category —</option>';
+  options += `<option value="${MEAL_WIZARD_SENTINEL}">Meals or Entertainment…</option>`;
+  options += cardholderCats.map(c => `<option value="${c.category.replace(/"/g,'&quot;')}">${c.category}</option>`).join('');
+  sel.innerHTML = options;
+}
+
+function onCategorySelect(value) {
+  if (value === MEAL_WIZARD_SENTINEL) {
+    document.getElementById('rcpt-category-actual').value = '';
+    startMealWizard();
+  } else {
+    document.getElementById('rcpt-category-actual').value = value;
+    document.getElementById('rcpt-meal-wizard').style.display = 'none';
   }
+}
+
+// Sets the form to reflect a category value already saved on a receipt
+// (used when opening an existing receipt for editing).
+function selectMealCategoryValue(category) {
+  const sel = document.getElementById('rcpt-category');
+  if (MEAL_WIZARD_CATEGORIES.includes(category)) {
+    sel.value = MEAL_WIZARD_SENTINEL;
+    document.getElementById('rcpt-category-actual').value = category;
+    document.getElementById('rcpt-meal-wizard').style.display = 'block';
+    document.getElementById('rcpt-meal-wizard-body').innerHTML = '';
+    document.getElementById('rcpt-meal-result').style.display = 'block';
+    document.getElementById('rcpt-meal-result-text').textContent = 'Category: ' + category;
+  } else {
+    sel.value = category;
+    document.getElementById('rcpt-category-actual').value = category;
+    document.getElementById('rcpt-meal-wizard').style.display = 'none';
+  }
+}
+
+function resetMealWizard(reopen) {
+  document.getElementById('rcpt-category-actual').value = '';
+  document.getElementById('rcpt-meal-result').style.display = 'none';
+  if (reopen) { startMealWizard(); }
+  else {
+    document.getElementById('rcpt-meal-wizard').style.display = 'none';
+    document.getElementById('rcpt-category').value = '';
+  }
+}
+
+function startMealWizard() {
+  document.getElementById('rcpt-meal-wizard').style.display = 'block';
+  document.getElementById('rcpt-meal-result').style.display = 'none';
+  document.getElementById('rcpt-meal-wizard-body').innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Was this entertainment (a show, round of golf, tickets, etc.) rather than a sit-down meal?</div>
+    <button type="button" onclick="mealWizardStep('entertainment')" style="margin:0 6px 6px 0;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">Yes, entertainment</button>
+    <button type="button" onclick="mealWizardStep('who')" style="margin:0 6px 6px 0;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">No, it was a meal</button>
+  `;
+}
+
+function mealWizardStep(step) {
+  const body = document.getElementById('rcpt-meal-wizard-body');
+  if (step === 'entertainment') {
+    finishMealWizard('Entertainment (Non-Deductible)');
+    return;
+  }
+  if (step === 'who') {
+    body.innerHTML = `
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Who was the meal with, and was business actually discussed?</div>
+      <button type="button" onclick="mealWizardStep('client')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">A client, prospect, or vendor — business was discussed</button>
+      <button type="button" onclick="mealWizardStep('office')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">The whole office/team — a celebration (birthday, etc.)</button>
+      <button type="button" onclick="mealWizardStep('selfjob')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">Just myself or coworkers, while working</button>
+      <button type="button" onclick="mealWizardStep('personal')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">Personal — no clear business purpose</button>
+    `;
+    return;
+  }
+  if (step === 'client') { finishMealWizard('Potential Business Meals (50% Deductible)'); return; }
+  if (step === 'office') { finishMealWizard('Office Celebration Meals (100% Deductible)'); return; }
+  if (step === 'personal') { finishMealWizard('Nondeductible Meals'); return; }
+  if (step === 'selfjob') {
+    const hasJob = !!document.getElementById('rcpt-job-number').value;
+    finishMealWizard(hasJob ? 'Meals - Direct (Job Cost)' : 'Meals Expense (50% Deductible)');
+    return;
+  }
+}
+
+function finishMealWizard(category) {
+  document.getElementById('rcpt-category-actual').value = category;
+  document.getElementById('rcpt-meal-wizard-body').innerHTML = '';
+  document.getElementById('rcpt-meal-result').style.display = 'block';
+  document.getElementById('rcpt-meal-result-text').textContent = 'Category: ' + category;
 }
 
 function canEditReceipt(createdAt) {
@@ -2016,9 +2164,11 @@ function editReceipt(id) {
   document.getElementById('rcpt-loc-id').value = r.location_id || '';
   document.getElementById('rcpt-loc-name').value = r.location_name || '';
   document.getElementById('rcpt-job-number').value = r.job_number || '';
+  document.getElementById('rcpt-needs-match').value = r.needs_job_match ? 'true' : '';
+  document.getElementById('rcpt-manual-job-row').style.display = 'none';
   document.getElementById('rcpt-vendor').value = r.vendor || '';
   document.getElementById('rcpt-amount').value = r.amount || '';
-  document.getElementById('rcpt-category').value = r.category || '';
+  selectMealCategoryValue(r.category || '');
   document.getElementById('rcpt-cardholder').value = r.cardholder_name || '';
   document.getElementById('rcpt-card-last4').value = r.card_last4 || '';
   document.getElementById('rcpt-notes').value = r.notes || '';
@@ -2036,9 +2186,11 @@ function resetReceiptForm() {
   document.getElementById('rcpt-loc-id').value = '';
   document.getElementById('rcpt-loc-name').value = '';
   document.getElementById('rcpt-job-number').value = '';
+  document.getElementById('rcpt-needs-match').value = '';
+  document.getElementById('rcpt-manual-job-row').style.display = 'none';
   document.getElementById('rcpt-vendor').value = '';
   document.getElementById('rcpt-amount').value = '';
-  document.getElementById('rcpt-category').value = '';
+  resetMealWizard();
   document.getElementById('rcpt-cardholder').value = (state.supervisor && state.supervisor.name) || '';
   document.getElementById('rcpt-card-last4').value = '';
   document.getElementById('rcpt-notes').value = '';
@@ -2054,11 +2206,11 @@ async function submitReceipt() {
   const expenseDate = document.getElementById('rcpt-date').value;
   const vendor = document.getElementById('rcpt-vendor').value;
   const amount = document.getElementById('rcpt-amount').value;
-  const category = document.getElementById('rcpt-category').value;
+  const category = document.getElementById('rcpt-category-actual').value;
 
   if (!expenseDate) { toast('Please select a date'); return; }
   if (!amount || parseFloat(amount) <= 0) { toast('Please enter an amount'); return; }
-  if (!category) { toast('Please select a category'); return; }
+  if (!category) { toast(document.getElementById('rcpt-category').value === MEAL_WIZARD_SENTINEL ? 'Please finish the meal questions above' : 'Please select a category'); return; }
 
   const btn = document.getElementById('rcpt-submit-btn');
   btn.textContent = editId ? 'Saving…' : 'Submitting…';
@@ -2070,6 +2222,7 @@ async function submitReceipt() {
     job_number: document.getElementById('rcpt-job-number').value || null,
     location_id: document.getElementById('rcpt-loc-id').value || null,
     location_name: document.getElementById('rcpt-loc-name').value || document.getElementById('rcpt-loc-search').value || null,
+    needs_job_match: document.getElementById('rcpt-needs-match').value === 'true',
     vendor: vendor || null,
     amount: parseFloat(amount),
     category: category,
@@ -2181,7 +2334,9 @@ function filterReceiptsLog() {
   const q = (document.getElementById('rcptlog-search').value || '').toLowerCase();
   const sort = document.getElementById('rcptlog-sort').value;
   const cat = document.getElementById('rcptlog-cat-filter').value;
+  const needsMatchOnly = document.getElementById('rcptlog-needs-match') && document.getElementById('rcptlog-needs-match').checked;
   let rows = _allReceipts.filter(r =>
+    (!needsMatchOnly || r.needs_job_match) &&
     (!cat || r.category === cat) &&
     (!q ||
       (r.vendor||'').toLowerCase().includes(q) ||
@@ -2211,7 +2366,7 @@ function filterReceiptsLog() {
         <div style="font-size:14px;font-weight:600;">${r.vendor || '—'} · ${amountLabel}</div>
         <span class="badge badge-navy" style="flex-shrink:0;margin-left:8px;font-size:10px;">${r.category || '—'}</span>
       </div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.needs_job_match ? ' · <span style="color:var(--attn);font-weight:600;">⚠ Needs job match</span>' : ''}</div>
       <div style="font-size:12px;color:var(--text2);">${r.cardholder_name || r.submitted_by || '—'}${cardLabel} · logged by ${r.submitted_by || '—'}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
       ${r.photo_urls && r.photo_urls.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.photo_urls.map(u=>`<a href="${u}" target="_blank"><img src="${u}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #E0E0E0;"></a>`).join('')}</div>` : ''}
@@ -2253,36 +2408,165 @@ function exportReceiptsCSV() {
   URL.revokeObjectURL(url);
 }
 
+// ── PDF REPORT (ADMIN) ──────────────────────────────────
+function openReceiptsPdfExport() {
+  document.getElementById('rprt-from').value = '';
+  document.getElementById('rprt-to').value = '';
+  document.getElementById('rprt-check-total').value = '';
+  showScreen('s-receipts-pdf');
+}
+
+function generateReceiptsPdfReport() {
+  const from = document.getElementById('rprt-from').value;
+  const to = document.getElementById('rprt-to').value;
+  if (!from || !to) { toast('Please pick both a From and To date'); return; }
+  const checkTotalRaw = document.getElementById('rprt-check-total').value;
+  const checkTotal = checkTotalRaw ? parseFloat(checkTotalRaw) : null;
+
+  const glByCat = {};
+  _rcptCategories.forEach(c => glByCat[c.category] = c.gl_account || '');
+
+  const rows = (_allReceipts || []).filter(r => r.expense_date >= from && r.expense_date <= to);
+  const grandTotal = rows.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
+
+  // GL Account + Job Number summary — one line per combination, matching
+  // exactly what gets keyed into WinTeam's General Ledger Distribution grid.
+  const glJobMap = {};
+  rows.forEach(r => {
+    const gl = glByCat[r.category] || '(no GL set)';
+    const job = r.job_number || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)');
+    const key = gl + '||' + job;
+    if (!glJobMap[key]) glJobMap[key] = {gl, job, category: r.category, amount: 0};
+    glJobMap[key].amount += parseFloat(r.amount) || 0;
+  });
+  const glJobRows = Object.values(glJobMap).sort((a,b) => a.gl.localeCompare(b.gl) || a.job.localeCompare(b.job));
+
+  // Cardholder totals — reconciliation only, not part of the WinTeam entry.
+  const cardholderMap = {};
+  rows.forEach(r => {
+    const name = r.cardholder_name || r.submitted_by || 'Unknown';
+    cardholderMap[name] = (cardholderMap[name] || 0) + (parseFloat(r.amount) || 0);
+  });
+  const cardholderRows = Object.entries(cardholderMap).sort((a,b) => a[0].localeCompare(b[0]));
+
+  // Detail sections grouped by cardholder, each receipt with its photo(s).
+  const byCardholder = {};
+  rows.forEach(r => {
+    const name = r.cardholder_name || r.submitted_by || 'Unknown';
+    (byCardholder[name] = byCardholder[name] || []).push(r);
+  });
+  const cardholderNames = Object.keys(byCardholder).sort();
+
+  const fmt = n => `$${(n||0).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  const dateLabel = d => { const dt = new Date(d + 'T00:00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+
+  let checkHtml = '';
+  if (checkTotal != null) {
+    const variance = grandTotal - checkTotal;
+    checkHtml = `
+      <div class="rprt-check">
+        <div>Logged in K Pro<div class="amt">${fmt(grandTotal)}</div></div>
+        <div>AMEX statement<div class="amt">${fmt(checkTotal)}</div></div>
+        <div>Variance<div class="amt ${Math.abs(variance) > 0.01 ? 'variance-bad' : ''}">${fmt(variance)}</div></div>
+      </div>`;
+  } else {
+    checkHtml = `<div class="rprt-check"><div>Grand total, all receipts logged<div class="amt">${fmt(grandTotal)}</div></div></div>`;
+  }
+
+  const glJobTableRows = glJobRows.map(r => `<tr><td>${r.gl}</td><td>${r.category||''}</td><td>${r.job}</td><td style="text-align:right;">${fmt(r.amount)}</td></tr>`).join('');
+  const glJobTotal = glJobRows.reduce((s,r)=>s+r.amount,0);
+
+  const cardholderTableRows = cardholderRows.map(([name,amt]) => `<tr><td>${name}</td><td style="text-align:right;">${fmt(amt)}</td></tr>`).join('');
+
+  const detailHtml = cardholderNames.map(name => {
+    const receipts = byCardholder[name].slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date));
+    const subtotal = receipts.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+    const items = receipts.map(r => `
+      <div class="rprt-receipt">
+        <div class="details">
+          <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'} · ${fmt(r.amount)}</div>
+          <div>Category: ${r.category||'—'} ${r.needs_job_match ? '<span style="color:#A32D2D;font-weight:700;"> (needs job match)</span>' : ''}</div>
+          <div>Job/Location: ${r.location_name || '—'}${r.job_number ? ' ('+r.job_number+')' : ''}</div>
+          ${r.notes ? `<div>Notes: ${r.notes}</div>` : ''}
+        </div>
+        <div class="photos">${(r.photo_urls||[]).map(u=>`<img src="${u}">`).join('') || '<div style="font-size:11px;color:#999;">No photo</div>'}</div>
+      </div>`).join('');
+    return `<div class="rprt-cardholder-block"><h4>${name} — ${fmt(subtotal)}</h4>${items}</div>`;
+  }).join('');
+
+  const html = `
+    <div class="rprt-page">
+      <div class="rprt-header">
+        <div class="brand">KENCAL MAINTENANCE CORPORATION</div>
+        <div class="title">Credit Card Expense Report</div>
+        <div class="sub">${dateLabel(from)} – ${dateLabel(to)} · Generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      </div>
+      <div class="rprt-section">${checkHtml}</div>
+      <div class="rprt-section">
+        <h3>GL Account + Job Number Summary (for WinTeam entry)</h3>
+        <table class="rprt-table">
+          <thead><tr><th>GL Account</th><th>Category</th><th>Job Number</th><th style="text-align:right;">Amount</th></tr></thead>
+          <tbody>${glJobTableRows}</tbody>
+          <tfoot><tr class="total-row"><td colspan="3">Total</td><td style="text-align:right;">${fmt(glJobTotal)}</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="rprt-section">
+        <h3>Cardholder Totals (reconciliation only)</h3>
+        <table class="rprt-table">
+          <thead><tr><th>Cardholder</th><th style="text-align:right;">Amount</th></tr></thead>
+          <tbody>${cardholderTableRows}</tbody>
+        </table>
+      </div>
+      <div class="rprt-section">
+        <h3>Receipt Detail &amp; Photos, by Cardholder</h3>
+        ${detailHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
+      </div>
+    </div>`;
+
+  const container = document.getElementById('rcpt-print-container');
+  container.innerHTML = html;
+  document.body.classList.add('printing-receipts-report');
+  setTimeout(() => {
+    window.print();
+    document.body.classList.remove('printing-receipts-report');
+  }, 150);
+}
+
 // ── MANAGE CATEGORIES & GL CODES (ADMIN) ───────────────
 async function loadReceiptCategoriesAdmin() {
   const list = document.getElementById('rcpt-cat-list');
   list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const cats = await sbFetch('kencal_gl_mapping?select=category,gl_account,gl_description,sort_order&order=sort_order');
+    const cats = await sbFetch('kencal_gl_mapping?select=category,gl_account,gl_description,admin_only,sort_order&order=sort_order');
     _rcptCategories = cats || [];
-    list.innerHTML = _rcptCategories.map(c => `
+    list.innerHTML = _rcptCategories.map(c => { const safe = c.category.replace(/[^a-zA-Z0-9]/g,'_'); return `
       <div class="card" style="margin-bottom:8px;padding:12px 14px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">${c.category}</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">${c.category}${c.admin_only ? ' <span class="badge" style="background:#F4F5F7;color:var(--text2);font-size:10px;">admin-only</span>' : ''}</div>
         <div class="input-group" style="margin-bottom:8px;">
           <label class="field-label">GL account number</label>
-          <input type="text" id="gl-${c.category.replace(/[^a-zA-Z0-9]/g,'_')}" value="${(c.gl_account||'').replace(/"/g,'&quot;')}" placeholder="e.g. 5010">
+          <input type="text" id="gl-${safe}" value="${(c.gl_account||'').replace(/"/g,'&quot;')}" placeholder="e.g. 5010">
         </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:8px;">
+          <input type="checkbox" id="admin-only-${safe}" ${c.admin_only ? 'checked' : ''}> Admin-only (hide from cardholders' category picker)
+        </label>
         <div style="display:flex;gap:8px;">
           <button class="btn-primary" style="margin:0;flex:1;padding:8px;font-size:12px;" onclick="saveReceiptCategoryGL('${c.category.replace(/'/g,"\\'")}')">Save</button>
           <button class="btn-secondary" style="margin:0;flex:1;padding:8px;font-size:12px;" onclick="deleteReceiptCategory('${c.category.replace(/'/g,"\\'")}')">Delete</button>
         </div>
-      </div>`).join('');
+      </div>`; }).join('');
   } catch(e) {
     list.innerHTML = '<p style="color:var(--fail);font-size:13px;padding:8px;">Error loading categories.</p>';
   }
 }
 
 async function saveReceiptCategoryGL(category) {
-  const input = document.getElementById(`gl-${category.replace(/[^a-zA-Z0-9]/g,'_')}`);
+  const safe = category.replace(/[^a-zA-Z0-9]/g,'_');
+  const input = document.getElementById(`gl-${safe}`);
+  const adminOnlyBox = document.getElementById(`admin-only-${safe}`);
   try {
     const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_gl_mapping?category=eq.${encodeURIComponent(category)}`, {
       method: 'PATCH', headers: rcptHeaders(),
-      body: JSON.stringify({gl_account: input.value || null, updated_at: new Date().toISOString()})
+      body: JSON.stringify({gl_account: input.value || null, admin_only: !!(adminOnlyBox && adminOnlyBox.checked), updated_at: new Date().toISOString()})
     });
     if (!res.ok) throw new Error(await res.text());
     toast('Saved ✓');
@@ -2551,12 +2835,17 @@ async function toggleCardholder(id, hasCard) {
       <div class="input-group" style="margin-bottom:10px;">
         <label class="field-label">Job / location <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
         <div style="position:relative;">
-          <input type="text" id="rcpt-loc-search" placeholder="Search jobs / locations…" oninput="filterReceiptLocations(this.value)" autocomplete="off">
+          <input type="text" id="rcpt-loc-search" placeholder="Search jobs / locations, or 'Office'…" oninput="filterReceiptLocations(this.value)" onfocus="filterReceiptLocations(this.value)" autocomplete="off">
           <div id="rcpt-loc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:0.5px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        </div>
+        <div id="rcpt-manual-job-row" style="display:none;margin-top:8px;">
+          <input type="text" id="rcpt-manual-job-text" placeholder="Type the job name / site as best you know it…" onblur="applyManualJobEntry()" style="margin-bottom:4px;">
+          <div style="font-size:11px;color:var(--attn);">This job isn't in the system yet — it'll be flagged for an admin to match up later. Your receipt still saves normally.</div>
         </div>
         <input type="hidden" id="rcpt-loc-id">
         <input type="hidden" id="rcpt-loc-name">
         <input type="hidden" id="rcpt-job-number">
+        <input type="hidden" id="rcpt-needs-match">
       </div>
       <div class="input-group" style="margin-bottom:10px;">
         <label class="field-label">Vendor</label>
@@ -2569,7 +2858,15 @@ async function toggleCardholder(id, hasCard) {
         </div>
         <div class="input-group">
           <label class="field-label">Category</label>
-          <select id="rcpt-category"><option value="">— Select category —</option></select>
+          <select id="rcpt-category" onchange="onCategorySelect(this.value)"><option value="">— Select category —</option></select>
+          <input type="hidden" id="rcpt-category-actual">
+        </div>
+      </div>
+      <div id="rcpt-meal-wizard" style="display:none;margin-top:12px;padding:12px;background:#F4F5F7;border-radius:10px;">
+        <div id="rcpt-meal-wizard-body"></div>
+        <div id="rcpt-meal-result" style="display:none;font-size:13px;font-weight:600;color:var(--navy);margin-top:8px;">
+          <span id="rcpt-meal-result-text"></span>
+          <button type="button" onclick="resetMealWizard(true)" style="margin-left:8px;background:none;border:none;color:var(--text2);font-size:12px;text-decoration:underline;cursor:pointer;">change</button>
         </div>
       </div>
     </div>
@@ -2645,15 +2942,50 @@ async function toggleCardholder(id, hasCard) {
         <option value="">All categories</option>
       </select>
     </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--attn);font-weight:600;">
+      <input type="checkbox" id="rcptlog-needs-match" onchange="filterReceiptsLog()"> Show only receipts needing a job match
+    </label>
     <div style="display:flex;gap:8px;">
-      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="exportReceiptsCSV()">⬇ Export CSV</button>
-      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadReceiptCategoriesAdmin();showScreen('s-receipts-categories')">Categories & GL</button>
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="exportReceiptsCSV()">⬇ CSV</button>
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openReceiptsPdfExport()">🖨 PDF Report</button>
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadReceiptCategoriesAdmin();showScreen('s-receipts-categories')">GL Codes</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadCardholdersAdmin();showScreen('s-receipts-cardholders')">Cardholders</button>
     </div>
   </div>
   <div class="scroll-body" style="padding-top:8px;">
     <div style="font-size:13px;color:var(--text2);font-weight:600;" id="rcptlog-total"></div>
     <div id="rcpt-log-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     RECEIPTS - PDF REPORT (ADMIN)
+══════════════════════════════════════════ -->
+<div class="screen" id="s-receipts-pdf">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-receipts-log')">‹</button>
+    <div class="top-bar-title">PDF Report</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <div class="card">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">Pick the statement period — doesn't need to match a calendar month.</div>
+      <div class="input-row" style="margin-bottom:10px;">
+        <div class="input-group">
+          <label class="field-label">From</label>
+          <input type="date" id="rprt-from">
+        </div>
+        <div class="input-group">
+          <label class="field-label">To</label>
+          <input type="date" id="rprt-to">
+        </div>
+      </div>
+      <div class="input-group">
+        <label class="field-label">AMEX statement total <span style="color:var(--text2);font-weight:400;">(optional — to check against)</span></label>
+        <input type="number" id="rprt-check-total" placeholder="0.00" step="0.01">
+      </div>
+    </div>
+    <button class="btn-primary" onclick="generateReceiptsPdfReport()">Generate Report</button>
   </div>
 </div>
 
@@ -2696,6 +3028,8 @@ async function toggleCardholder(id, hasCard) {
     <div id="rcpt-cardholder-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
   </div>
 </div>
+
+<div id="rcpt-print-container"></div>
 
 </body>
 </html>
