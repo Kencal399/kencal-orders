@@ -184,6 +184,14 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
 .rprt-table th{background:#F4F5F7;text-align:left;padding:6px 8px;border-bottom:1px solid #ccc;font-weight:700;}
 .rprt-table td{padding:6px 8px;border-bottom:0.5px solid #E0E0E0;}
 .rprt-table tr.total-row td{border-top:2px solid #1B2A4A;font-weight:700;}
+.rprt-glgroup{border:1px solid #E0E0E0;border-radius:8px;margin-bottom:8px;overflow:hidden;}
+.rprt-glgroup-header{display:flex;justify-content:space-between;gap:10px;background:#F4F5F7;padding:7px 10px;font-size:12px;font-weight:700;color:#1B2A4A;border-bottom:0.5px solid #E0E0E0;}
+.rprt-glgroup-header .meta{font-weight:700;}
+.rprt-glgroup-header .meta .cat{font-weight:400;color:#555;}
+.rprt-subtable{width:100%;border-collapse:collapse;font-size:10.5px;}
+.rprt-subtable th{text-align:left;padding:4px 10px;color:#999;font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:0.04em;border-bottom:0.5px solid #E0E0E0;}
+.rprt-subtable td{padding:3px 10px;border-bottom:0.5px solid #F0F0F0;color:#333;}
+.rprt-glgroup-grandtotal{display:flex;justify-content:space-between;padding:10px 14px;background:#1B2A4A;color:#fff;font-weight:700;font-size:13px;border-radius:8px;margin-top:6px;}
 .rprt-check{display:flex;gap:24px;padding:14px 18px;background:#F4F5F7;border-radius:8px;font-size:14px;}
 .rprt-check .amt{font-size:20px;font-weight:700;color:#1B2A4A;}
 .rprt-check .variance-bad{color:#A32D2D;font-weight:700;}
@@ -198,6 +206,8 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
   body.printing-receipts-report > *:not(#rcpt-print-container){display:none !important;}
   body.printing-receipts-report #rcpt-print-container{display:block !important;}
   .rprt-cardholder-block{break-inside:avoid;}
+  .rprt-glgroup-header{break-after:avoid;}
+  .rprt-subtable tr{break-inside:avoid;}
 }
 </style>
 </head>
@@ -2436,8 +2446,9 @@ function generateReceiptsPdfReport() {
     const gl = glByCat[r.category] || '(no GL set)';
     const job = r.job_number || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)');
     const key = gl + '||' + job;
-    if (!glJobMap[key]) glJobMap[key] = {gl, job, category: r.category, amount: 0};
+    if (!glJobMap[key]) glJobMap[key] = {gl, job, category: r.category, amount: 0, receipts: []};
     glJobMap[key].amount += parseFloat(r.amount) || 0;
+    glJobMap[key].receipts.push(r);
   });
   const glJobRows = Object.values(glJobMap).sort((a,b) => a.gl.localeCompare(b.gl) || a.job.localeCompare(b.job));
 
@@ -2473,7 +2484,26 @@ function generateReceiptsPdfReport() {
     checkHtml = `<div class="rprt-check"><div>Grand total, all receipts logged<div class="amt">${fmt(grandTotal)}</div></div></div>`;
   }
 
-  const glJobTableRows = glJobRows.map(r => `<tr><td>${r.gl}</td><td>${r.category||''}</td><td>${r.job}</td><td style="text-align:right;">${fmt(r.amount)}</td></tr>`).join('');
+  const glJobBlocksHtml = glJobRows.map(g => {
+    const itemRows = g.receipts.slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date)).map(r => `
+      <tr>
+        <td>${dateLabel(r.expense_date)}</td>
+        <td>${r.cardholder_name || r.submitted_by || 'Unknown'}</td>
+        <td>${r.vendor || '—'}${r.needs_job_match ? ' <span style="color:#A32D2D;font-weight:700;">(needs job match)</span>' : ''}</td>
+        <td style="text-align:right;">${fmt(r.amount)}</td>
+      </tr>`).join('');
+    return `
+      <div class="rprt-glgroup">
+        <div class="rprt-glgroup-header">
+          <span class="meta">${g.gl} · Job ${g.job} <span class="cat">— ${g.category||''}</span></span>
+          <span>${fmt(g.amount)}</span>
+        </div>
+        <table class="rprt-subtable">
+          <thead><tr><th>Date</th><th>Cardholder</th><th>Vendor</th><th style="text-align:right;">Amount</th></tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
   const glJobTotal = glJobRows.reduce((s,r)=>s+r.amount,0);
 
   const cardholderTableRows = cardholderRows.map(([name,amt]) => `<tr><td>${name}</td><td style="text-align:right;">${fmt(amt)}</td></tr>`).join('');
@@ -2504,11 +2534,8 @@ function generateReceiptsPdfReport() {
       <div class="rprt-section">${checkHtml}</div>
       <div class="rprt-section">
         <h3>GL Account + Job Number Summary (for WinTeam entry)</h3>
-        <table class="rprt-table">
-          <thead><tr><th>GL Account</th><th>Category</th><th>Job Number</th><th style="text-align:right;">Amount</th></tr></thead>
-          <tbody>${glJobTableRows}</tbody>
-          <tfoot><tr class="total-row"><td colspan="3">Total</td><td style="text-align:right;">${fmt(glJobTotal)}</td></tr></tfoot>
-        </table>
+        ${glJobBlocksHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
+        <div class="rprt-glgroup-grandtotal"><span>Total</span><span>${fmt(glJobTotal)}</span></div>
       </div>
       <div class="rprt-section">
         <h3>Cardholder Totals (reconciliation only)</h3>
