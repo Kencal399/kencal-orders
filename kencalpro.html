@@ -622,7 +622,7 @@ function scoreColor(s){if(!s)return'var(--text)';return s>=90?'var(--pass)':s>=7
 // ── LOGIN ──────────────────────────────────────────────
 async function loadSupervisors() {
   try {
-    const data = await sbFetch('kencal_supervisors?select=id,name,role,active,has_card&active=eq.true&order=name');
+    const data = await sbFetch('kencal_supervisors?select=id,name,role,active,has_card,receipts_admin&active=eq.true&order=name');
     const list = document.getElementById('sup-list');
     if (!data.length) { list.innerHTML='<p style="text-align:center;color:var(--text2);padding:20px;">No supervisors found.</p>'; return; }
     const colors=['#1B2A4A','#0F6E56','#533FB7','#854F0B','#A32D2D','#185FA5','#2D7A4A','#7A2D5A'];
@@ -630,7 +630,7 @@ async function loadSupervisors() {
       const ini=s.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
       const col=colors[i%colors.length];
       const roleLabel=s.role.charAt(0).toUpperCase()+s.role.slice(1);
-      return `<div class="sup-card" onclick="selectSup(${s.id},'${s.name.replace(/'/g,"\\'")}','${s.role}','${ini}','${col}',${!!s.has_card})">
+      return `<div class="sup-card" onclick="selectSup(${s.id},'${s.name.replace(/'/g,"\\'")}','${s.role}','${ini}','${col}',${!!s.has_card},${!!s.receipts_admin})">
         <div class="sup-avatar" style="background:${col};">${ini}</div>
         <div style="flex:1;"><div class="sup-name">${s.name}</div><div class="sup-role-label">${roleLabel}</div></div>
         <span style="font-size:20px;color:#ccc;">›</span>
@@ -639,8 +639,8 @@ async function loadSupervisors() {
   } catch(e) { document.getElementById('sup-list').innerHTML='<p style="color:var(--fail);padding:16px;font-size:13px;">Error loading. Check connection.</p>'; }
 }
 
-function selectSup(id, name, role, initials, color, hasCard) {
-  state.supervisor={id,name,role,initials,color,has_card:!!hasCard};
+function selectSup(id, name, role, initials, color, hasCard, receiptsAdmin) {
+  state.supervisor={id,name,role,initials,color,has_card:!!hasCard,receipts_admin:!!receiptsAdmin};
   document.getElementById('pin-name').textContent=name;
   document.getElementById('pin-avatar').textContent=initials;
   document.getElementById('pin-avatar').style.background=color;
@@ -696,7 +696,8 @@ function buildHome() {
   // Work Order Log — admin only
   if(role==='admin')
     tiles.push({id:'wolog',icon:'📊',bg:'#E8ECF3',name:'Work Order Log',desc:'View all submitted work orders',screen:'s-wo-log',action:loadWOLog});
-  if(role==='admin')
+  // Receipts Log — restricted to specific people (receipts_admin flag), not tied to role
+  if(state.supervisor.receipts_admin)
     tiles.push({id:'receiptslog',icon:'🧾',bg:'#FDF0EE',name:'Receipts Log',desc:'Review all receipts, export for WinTeam',screen:'s-receipts-log',action:loadReceiptsLog});
   if(name==='Santiago Alzate')
     tiles.push({id:'warehouse',icon:'🏭',bg:'#FAEEDA',name:'Warehouse Admin',desc:'Approve orders, distribution logs',screen:'s-supply',action:openWarehouse});
@@ -2303,6 +2304,7 @@ async function handleReceiptPhotos(input) {
   if (!files.length) return;
   const status = document.getElementById('rcpt-photo-status');
   status.textContent = `Uploading ${files.length} photo${files.length > 1 ? 's' : ''}…`;
+  let failCount = 0;
   for (const file of files) {
     try {
       const url = await uploadPhotoToSupabase(file, 'kencal-receipt-photos');
@@ -2310,10 +2312,19 @@ async function handleReceiptPhotos(input) {
       status.textContent = `Uploading… ${_rcptPendingPhotos.length} done`;
       renderReceiptPhotoGrid();
     } catch(e) {
-      status.textContent = 'Upload error — try again';
+      failCount++;
+      console.error('Receipt photo upload error:', e);
+      status.textContent = `Upload failed: ${e.message}`;
+      toast(`Photo upload failed: ${e.message}`);
     }
   }
-  status.textContent = `${_rcptPendingPhotos.length} photo${_rcptPendingPhotos.length !== 1 ? 's' : ''} uploaded ✓`;
+  // Only claim success if something actually made it to storage — a run of
+  // failures leaves the last error message on screen instead of a false ✓.
+  if (!failCount) {
+    status.textContent = `${_rcptPendingPhotos.length} photo${_rcptPendingPhotos.length !== 1 ? 's' : ''} uploaded ✓`;
+  } else if (_rcptPendingPhotos.length) {
+    status.textContent = `${_rcptPendingPhotos.length} uploaded, ${failCount} failed — see error above`;
+  }
   input.value = '';
 }
 
@@ -2635,16 +2646,21 @@ async function loadCardholdersAdmin() {
   const list = document.getElementById('rcpt-cardholder-list');
   list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const sups = await sbFetch('kencal_supervisors?select=id,name,role,has_card&active=eq.true&order=name');
+    const sups = await sbFetch('kencal_supervisors?select=id,name,role,has_card,receipts_admin&active=eq.true&order=name');
     list.innerHTML = sups.map(s => `
       <div class="card" style="margin-bottom:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;">
         <div>
           <div style="font-size:14px;font-weight:600;">${s.name}</div>
           <div style="font-size:12px;color:var(--text2);">${s.role}</div>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-          <input type="checkbox" ${s.has_card ? 'checked' : ''} onchange="toggleCardholder(${s.id}, this.checked)"> Has card
-        </label>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+            <input type="checkbox" ${s.has_card ? 'checked' : ''} onchange="toggleCardholder(${s.id}, this.checked)"> Has card
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+            <input type="checkbox" ${s.receipts_admin ? 'checked' : ''} onchange="toggleReceiptsAdmin(${s.id}, this.checked)"> Sees Receipts Log
+          </label>
+        </div>
       </div>`).join('');
   } catch(e) {
     list.innerHTML = '<p style="color:var(--fail);font-size:13px;padding:8px;">Error loading supervisors.</p>';
@@ -2659,6 +2675,17 @@ async function toggleCardholder(id, hasCard) {
     });
     if (!res.ok) throw new Error(await res.text());
     toast(hasCard ? 'Cardholder access granted ✓' : 'Cardholder access removed');
+  } catch(e) { toast('Error saving — check connection'); }
+}
+
+async function toggleReceiptsAdmin(id, receiptsAdmin) {
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_supervisors?id=eq.${id}`, {
+      method: 'PATCH', headers: rcptHeaders(),
+      body: JSON.stringify({receipts_admin: receiptsAdmin})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast(receiptsAdmin ? 'Receipts Log access granted ✓' : 'Receipts Log access removed');
   } catch(e) { toast('Error saving — check connection'); }
 }
 
