@@ -1832,6 +1832,21 @@ function renderWOLog(wos) {
   }).join('');
 }
 
+// Shared helper — receipts can now attach a downloaded PDF invoice instead
+// of a camera photo. <img> can't render a PDF, so anything ending in .pdf
+// gets a small clickable "📄 PDF" tile instead, wherever attachments show up
+// (the in-form preview grid, the Receipts Log, and the PDF Report).
+function isPdfFile(url) { return /\.pdf(\?|$)/i.test(url || ''); }
+function attachmentTileHtml(url, size) {
+  size = size || 100;
+  if (isPdfFile(url)) {
+    return `<a href="${url}" target="_blank" style="width:${size}px;height:${size}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#F4F5F7;border:1px solid #ccc;border-radius:8px;text-decoration:none;color:var(--navy);font-size:11px;font-weight:600;">
+      <span style="font-size:${Math.round(size*0.28)}px;">📄</span>PDF
+    </a>`;
+  }
+  return `<a href="${url}" target="_blank"><img src="${url}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:1px solid #ccc;"></a>`;
+}
+
 // ── WORK ORDER PHOTO UPLOAD ────────────────────────────
 let _woPendingPhotos = [];
 
@@ -1914,12 +1929,41 @@ let _rcptLocs = [];
 let _rcptCategories = [];
 let _myReceipts = [];
 let _allReceipts = [];
+// Cardholder names flagged separate_statement=true on kencal_supervisors —
+// they work for a different company with its own AMEX statement, so their
+// receipts stay out of the main totals in the PDF Report and Receipts Log.
+let _rcptSeparateStatementNames = [];
+let _rcptRecurring = [];
+// Tracks whether the New Receipt form was opened from a cardholder's own
+// "Receipts" tile ('home') or from an admin logging on someone else's
+// behalf via Receipts Log ('log') — so Cancel/Back/Done return to the
+// right place instead of always assuming the cardholder's own screen.
+let _rcptFormOrigin = 'home';
+
+function receiptsBack() {
+  if (_rcptFormOrigin === 'log') { showScreen('s-receipts-log'); loadReceiptsLog(); }
+  else { showScreen('s-receipts-home'); loadMyReceipts(); }
+}
 
 function rcptHeaders(extra) {
   return Object.assign({'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}, extra||{});
 }
 
+// Entry point for someone with receipts_admin (Mary, Keri, Rick) logging a
+// receipt on behalf of a cardholder, from Receipts Log rather than from
+// that person's own "Receipts" tile (which non-cardholders like Mary don't
+// have). Reuses the exact same form as self-service submission.
+async function openReceiptFormForAdmin() {
+  _rcptFormOrigin = 'log';
+  if (!_rcptLocs.length) await loadReceiptLocations();
+  if (!_rcptCategories.length) await loadReceiptCategories();
+  resetReceiptForm();
+  document.getElementById('rcpt-cardholder').value = '';
+  showScreen('s-receipts-new');
+}
+
 async function loadReceiptsScreen() {
+  _rcptFormOrigin = 'home';
   showScreen('s-receipts-home');
   const today = new Date().toISOString().split('T')[0];
   if (document.getElementById('rcpt-date')) document.getElementById('rcpt-date').value = today;
@@ -1999,7 +2043,159 @@ document.addEventListener('click', function(e) {
   if (dropdown && search && !search.contains(e.target) && !dropdown.contains(e.target)) {
     dropdown.style.display = 'none';
   }
+  document.querySelectorAll('[id^="split-loc-dropdown-"]').forEach(dd => {
+    const row = dd.closest('.split-line-row');
+    if (row && !row.contains(e.target)) dd.style.display = 'none';
+  });
 });
+
+// ── RECEIPT SPLITTING (one card charge, multiple job lines) ──────────
+// _rcptSplitLines holds the in-progress split form's job lines. Each entry:
+// {locId, locName, jobNumber, needsMatch, pretax}. Tax on the whole receipt
+// is apportioned across lines proportionally to pretax share, with the
+// last line absorbing the leftover penny(s) so the lines foot exactly to
+// "Total amount charged."
+let _rcptSplitLines = [];
+
+function blankSplitLine() { return {locId:'', locName:'', jobNumber:'', needsMatch:'', pretax:''}; }
+
+function onSplitToggle(checked) {
+  document.getElementById('rcpt-job-single-group').style.display = checked ? 'none' : 'block';
+  document.getElementById('rcpt-split-section').style.display = checked ? 'block' : 'none';
+  document.getElementById('rcpt-amount-label').textContent = checked ? 'Total amount charged ($)' : 'Amount ($)';
+  // Drop-shipment applies to a single job's line, entered on the WinTeam
+  // Inventory side after the fact — it doesn't make sense while building a
+  // multi-job split, so keep it out of the way (and forced off) here; it
+  // can still be set later by editing one job's line individually.
+  const dropshipRow = document.getElementById('rcpt-dropship-row');
+  if (dropshipRow) {
+    if (checked) { dropshipRow.dataset.hiddenForSplit = 'true'; dropshipRow.style.display = 'none'; }
+    else if (dropshipRow.dataset.hiddenForSplit) { delete dropshipRow.dataset.hiddenForSplit; dropshipRow.style.display = (state.supervisor && state.supervisor.receipts_admin) ? 'flex' : 'none'; }
+  }
+  if (checked) {
+    if (_rcptSplitLines.length < 2) _rcptSplitLines = [blankSplitLine(), blankSplitLine()];
+    renderSplitLines();
+    updateSplitCalc();
+  } else {
+    _rcptSplitLines = [];
+  }
+}
+
+function addSplitLine() {
+  _rcptSplitLines.push(blankSplitLine());
+  renderSplitLines();
+  updateSplitCalc();
+}
+
+function removeSplitLine(i) {
+  if (_rcptSplitLines.length <= 2) { toast('A split needs at least 2 jobs'); return; }
+  _rcptSplitLines.splice(i, 1);
+  renderSplitLines();
+  updateSplitCalc();
+}
+
+function renderSplitLines() {
+  const container = document.getElementById('rcpt-split-lines');
+  container.innerHTML = _rcptSplitLines.map((line, i) => `
+    <div class="split-line-row" style="background:white;border-radius:8px;padding:10px;margin-bottom:8px;border:0.5px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:12px;font-weight:700;color:var(--navy);">Job ${i+1}</span>
+        <span onclick="removeSplitLine(${i})" style="cursor:pointer;color:var(--text2);font-size:12px;">✕ remove</span>
+      </div>
+      <div style="position:relative;margin-bottom:8px;">
+        <input type="text" id="split-loc-search-${i}" placeholder="Search jobs / locations, or 'Office'…" value="${(line.locName||'').replace(/"/g,'&quot;')}" oninput="filterSplitLocation(${i}, this.value)" onfocus="filterSplitLocation(${i}, this.value)" autocomplete="off">
+        <div id="split-loc-dropdown-${i}" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:0.5px solid var(--border);border-radius:10px;max-height:180px;overflow-y:auto;z-index:60;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+      </div>
+      <input type="number" id="split-pretax-${i}" placeholder="Pre-tax amount for this job ($)" step="0.01" min="0" value="${line.pretax||''}" oninput="_rcptSplitLines[${i}].pretax=this.value;updateSplitCalc()">
+      <div id="split-preview-${i}" style="font-size:11px;color:var(--text2);margin-top:4px;"></div>
+    </div>`).join('');
+}
+
+function filterSplitLocation(i, query) {
+  _rcptSplitLines[i].locName = query;
+  const dropdown = document.getElementById(`split-loc-dropdown-${i}`);
+  if (!query || query.length < 1) { dropdown.style.display = 'none'; return; }
+  const q = query.toLowerCase();
+  const matches = (_rcptLocs||[]).filter(l =>
+    (l.display_name || '').toLowerCase().includes(q) ||
+    (l.job_number || '').toLowerCase().includes(q)
+  ).slice(0, 25);
+  const manualRow = `<div onclick="useManualSplitJobEntry(${i})"
+      style="padding:10px 12px;border-top:${matches.length ? '1px' : '0.5px'} solid var(--border);cursor:pointer;font-size:13px;color:var(--navy);font-weight:600;background:#F9FAFB;">
+      ✎ Can't find it? Use "${query.replace(/</g,'').replace(/"/g,'&quot;')}" as typed
+    </div>`;
+  if (!matches.length) {
+    dropdown.innerHTML = `<div style="padding:10px 12px;font-size:13px;color:var(--text2);">No matches for "${query.replace(/</g,'')}"</div>` + manualRow;
+    dropdown.style.display = 'block';
+    return;
+  }
+  dropdown.innerHTML = matches.map(l =>
+    `<div onclick="selectSplitLocation(${i},${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${l.job_number||''}')"
+      style="padding:10px 12px;border-bottom:0.5px solid var(--border);cursor:pointer;font-size:14px;">
+      <div style="font-weight:600;">${l.display_name || '—'}</div>
+      <div style="font-size:12px;color:var(--text2);">${l.job_number || ''}</div>
+    </div>`
+  ).join('') + manualRow;
+  dropdown.style.display = 'block';
+}
+
+function selectSplitLocation(i, id, name, jobNumber) {
+  _rcptSplitLines[i].locId = id;
+  _rcptSplitLines[i].locName = name;
+  _rcptSplitLines[i].jobNumber = jobNumber;
+  _rcptSplitLines[i].needsMatch = '';
+  document.getElementById(`split-loc-search-${i}`).value = name;
+  document.getElementById(`split-loc-dropdown-${i}`).style.display = 'none';
+}
+
+function useManualSplitJobEntry(i) {
+  const typed = document.getElementById(`split-loc-search-${i}`).value.trim();
+  _rcptSplitLines[i].locId = '';
+  _rcptSplitLines[i].locName = typed;
+  _rcptSplitLines[i].jobNumber = '';
+  _rcptSplitLines[i].needsMatch = typed ? 'true' : '';
+  document.getElementById(`split-loc-dropdown-${i}`).style.display = 'none';
+}
+
+// Proportional tax split: each line gets tax * (its pretax / subtotal),
+// rounded to the cent, except the last line which absorbs whatever's left
+// so the lines always foot exactly to subtotal + tax.
+function computeSplitApportionment(lines, tax) {
+  const pretaxNums = lines.map(l => parseFloat(l.pretax) || 0);
+  const subtotal = pretaxNums.reduce((s,n) => s+n, 0);
+  const taxShares = pretaxNums.map(n => subtotal > 0 ? Math.round((n / subtotal) * tax * 100) / 100 : 0);
+  const allocated = taxShares.slice(0, -1).reduce((s,n) => s+n, 0);
+  if (taxShares.length) taxShares[taxShares.length-1] = Math.round((tax - allocated) * 100) / 100;
+  return { subtotal, taxShares, amounts: pretaxNums.map((n,idx) => Math.round((n + taxShares[idx]) * 100) / 100) };
+}
+
+function updateSplitCalc() {
+  const statusEl = document.getElementById('rcpt-split-status');
+  if (!statusEl) return;
+  const tax = parseFloat(document.getElementById('rcpt-split-tax').value) || 0;
+  const totalCharged = parseFloat(document.getElementById('rcpt-amount').value) || 0;
+  const { subtotal, taxShares, amounts } = computeSplitApportionment(_rcptSplitLines, tax);
+  amounts.forEach((amt, i) => {
+    const preview = document.getElementById(`split-preview-${i}`);
+    if (preview) preview.textContent = (parseFloat(_rcptSplitLines[i].pretax)||0) > 0 ? `+ $${taxShares[i].toFixed(2)} tax = $${amt.toFixed(2)} for this job` : '';
+  });
+  const computedTotal = Math.round((subtotal + tax) * 100) / 100;
+  const diff = Math.round((totalCharged - computedTotal) * 100) / 100;
+  const allFilled = _rcptSplitLines.every(l => (parseFloat(l.pretax)||0) > 0);
+  if (!allFilled || totalCharged <= 0) {
+    statusEl.style.background = '#F4F5F7';
+    statusEl.style.color = 'var(--text2)';
+    statusEl.textContent = `Enter the total amount charged above and a pre-tax amount for each job.`;
+  } else if (Math.abs(diff) > 0.01) {
+    statusEl.style.background = '#FBEAEA';
+    statusEl.style.color = '#A32D2D';
+    statusEl.textContent = `Jobs + tax = $${computedTotal.toFixed(2)}, but total amount charged is $${totalCharged.toFixed(2)} (off by $${Math.abs(diff).toFixed(2)}). Fix before submitting.`;
+  } else {
+    statusEl.style.background = '#E8F5EC';
+    statusEl.style.color = '#2D7A4A';
+    statusEl.textContent = `✓ $${subtotal.toFixed(2)} pre-tax + $${tax.toFixed(2)} tax = $${computedTotal.toFixed(2)}, matching the total charged.`;
+  }
+}
 
 // Meal/entertainment GL lines — never shown directly in the picker. A
 // cardholder answers a few plain questions (onCategorySelect -> the meal
@@ -2158,7 +2354,7 @@ function renderMyReceipts(receipts) {
         <div style="font-size:14px;font-weight:600;">${r.vendor || '—'} · ${amountLabel}</div>
         <span class="badge badge-navy" style="flex-shrink:0;margin-left:8px;font-size:10px;">${r.category || '—'}</span>
       </div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.split_group_id ? ' · <span style="color:var(--navy);font-weight:600;">🔗 Split ('+r.split_group_id.replace(/^SPLIT-/,'')+')</span>' : ''}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
       ${editBtn}
     </div>`;
@@ -2183,9 +2379,36 @@ function editReceipt(id) {
   document.getElementById('rcpt-cardholder').value = r.cardholder_name || '';
   document.getElementById('rcpt-card-last4').value = r.card_last4 || '';
   document.getElementById('rcpt-notes').value = r.notes || '';
+  document.getElementById('rcpt-no-receipt').checked = !!r.no_receipt;
+  onNoReceiptToggle(!!r.no_receipt);
+  const dropshipRow = document.getElementById('rcpt-dropship-row');
+  const isAdmin = state.supervisor && state.supervisor.receipts_admin;
+  if (dropshipRow) dropshipRow.style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('rcpt-drop-shipment').checked = !!r.drop_shipment;
+  // Editing never re-opens the multi-line split UI — a split receipt's
+  // lines were already created together; edit each job's line on its own.
+  document.getElementById('rcpt-split-toggle').checked = false;
+  document.getElementById('rcpt-split-toggle').disabled = !!r.split_group_id;
+  onSplitToggle(false);
+  const banner = document.getElementById('rcpt-split-edit-banner');
+  if (r.split_group_id) {
+    const ref = r.split_group_id.replace(/^SPLIT-/, '');
+    banner.textContent = `🔗 Part of a multi-job split (Ref ${ref}) — this only edits this one job's line.`;
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
   _rcptPendingPhotos = (r.photo_urls || []).slice();
   renderReceiptPhotoGrid();
   showScreen('s-receipts-new');
+}
+
+// A no-receipt charge (bank fee, interest, etc.) never has anything to
+// attach — collapse the photo/PDF section instead of leaving an empty
+// upload box that just invites confusion about whether something's missing.
+function onNoReceiptToggle(checked) {
+  const section = document.getElementById('rcpt-photo-section');
+  if (section) section.style.display = checked ? 'none' : 'block';
 }
 
 function resetReceiptForm() {
@@ -2205,6 +2428,21 @@ function resetReceiptForm() {
   document.getElementById('rcpt-cardholder').value = (state.supervisor && state.supervisor.name) || '';
   document.getElementById('rcpt-card-last4').value = '';
   document.getElementById('rcpt-notes').value = '';
+  document.getElementById('rcpt-no-receipt').checked = false;
+  onNoReceiptToggle(false);
+  document.getElementById('rcpt-split-toggle').checked = false;
+  document.getElementById('rcpt-split-toggle').disabled = false;
+  document.getElementById('rcpt-split-tax').value = '';
+  document.getElementById('rcpt-drop-shipment').checked = false;
+  document.getElementById('rcpt-split-edit-banner').style.display = 'none';
+  onSplitToggle(false);
+  const adminRow = document.getElementById('rcpt-cardholder-admin-row');
+  const isAdmin = state.supervisor && state.supervisor.receipts_admin;
+  if (adminRow) adminRow.style.display = isAdmin ? 'block' : 'none';
+  const dropshipRow = document.getElementById('rcpt-dropship-row');
+  if (dropshipRow) dropshipRow.style.display = isAdmin ? 'flex' : 'none';
+  if (isAdmin) loadReceiptCardholders();
+  loadRecurringChargesQuickfill();
   const btn = document.getElementById('rcpt-submit-btn');
   btn.textContent = 'Submit Receipt';
   btn.disabled = false;
@@ -2214,6 +2452,9 @@ function resetReceiptForm() {
 
 async function submitReceipt() {
   const editId = document.getElementById('rcpt-edit-id').value;
+  const isSplit = !editId && document.getElementById('rcpt-split-toggle').checked;
+  if (isSplit) { await submitSplitReceipt(); return; }
+
   const expenseDate = document.getElementById('rcpt-date').value;
   const vendor = document.getElementById('rcpt-vendor').value;
   const amount = document.getElementById('rcpt-amount').value;
@@ -2240,6 +2481,8 @@ async function submitReceipt() {
     cardholder_name: document.getElementById('rcpt-cardholder').value || state.supervisor.name,
     card_last4: document.getElementById('rcpt-card-last4').value || null,
     notes: document.getElementById('rcpt-notes').value || null,
+    no_receipt: document.getElementById('rcpt-no-receipt').checked,
+    drop_shipment: document.getElementById('rcpt-drop-shipment') ? document.getElementById('rcpt-drop-shipment').checked : false,
     photo_urls: _rcptPendingPhotos.length ? _rcptPendingPhotos : null,
     updated_at: new Date().toISOString(),
   };
@@ -2270,6 +2513,7 @@ async function submitReceipt() {
     const dateLabel = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
     document.getElementById('rcpt-confirm-details').textContent =
       `${payload.vendor || 'Receipt'} · $${parseFloat(amount).toLocaleString('en-US',{minimumFractionDigits:2})} · ${dateLabel}`;
+    document.getElementById('rcpt-confirm-back-btn').textContent = _rcptFormOrigin === 'log' ? 'Back to Receipts Log' : 'Back to my receipts';
 
     showScreen('s-receipts-confirm');
     toast(editId ? 'Changes saved ✓' : 'Receipt submitted ✓');
@@ -2280,18 +2524,98 @@ async function submitReceipt() {
   }
 }
 
+// A split receipt creates N linked rows (one per job) in a single request,
+// all sharing split_group_id so they read as a deliberate split rather
+// than accidental duplicates, and each carrying its own pretax_amount /
+// tax_amount alongside the final apportioned amount.
+async function submitSplitReceipt() {
+  const expenseDate = document.getElementById('rcpt-date').value;
+  const vendor = document.getElementById('rcpt-vendor').value;
+  const totalCharged = parseFloat(document.getElementById('rcpt-amount').value) || 0;
+  const tax = parseFloat(document.getElementById('rcpt-split-tax').value) || 0;
+  const category = document.getElementById('rcpt-category-actual').value;
+
+  if (!expenseDate) { toast('Please select a date'); return; }
+  if (!totalCharged || totalCharged <= 0) { toast('Please enter the total amount charged'); return; }
+  if (!category) { toast(document.getElementById('rcpt-category').value === MEAL_WIZARD_SENTINEL ? 'Please finish the meal questions above' : 'Please select a category'); return; }
+  if (_rcptSplitLines.some(l => !(parseFloat(l.pretax) > 0))) { toast('Enter a pre-tax amount for every job'); return; }
+
+  const { subtotal, taxShares, amounts } = computeSplitApportionment(_rcptSplitLines, tax);
+  const computedTotal = Math.round((subtotal + tax) * 100) / 100;
+  if (Math.abs(totalCharged - computedTotal) > 0.01) { toast('Jobs + tax don\'t add up to the total charged yet'); return; }
+
+  const btn = document.getElementById('rcpt-submit-btn');
+  btn.textContent = 'Submitting…';
+  btn.disabled = true;
+
+  const splitGroupId = 'SPLIT-' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random()*36).toString(36).toUpperCase();
+  const nowIso = new Date().toISOString();
+  const shared = {
+    submitted_by: state.supervisor.name,
+    expense_date: expenseDate,
+    vendor: vendor || null,
+    category: category,
+    cardholder_name: document.getElementById('rcpt-cardholder').value || state.supervisor.name,
+    card_last4: document.getElementById('rcpt-card-last4').value || null,
+    notes: document.getElementById('rcpt-notes').value || null,
+    no_receipt: document.getElementById('rcpt-no-receipt').checked,
+    drop_shipment: false,
+    photo_urls: _rcptPendingPhotos.length ? _rcptPendingPhotos : null,
+    split_group_id: splitGroupId,
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+  const payloads = _rcptSplitLines.map((line, i) => ({
+    ...shared,
+    job_number: line.jobNumber || null,
+    location_id: line.locId || null,
+    location_name: line.locName || null,
+    needs_job_match: line.needsMatch === 'true',
+    amount: amounts[i],
+    pretax_amount: Math.round((parseFloat(line.pretax)||0) * 100) / 100,
+    tax_amount: taxShares[i],
+  }));
+
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_receipts', {
+      method: 'POST',
+      headers: rcptHeaders({'Prefer':'return=representation'}),
+      body: JSON.stringify(payloads)
+    });
+    if (!res.ok) throw new Error('Save failed: ' + await res.text());
+
+    document.getElementById('rcpt-confirm-title').textContent = 'Submitted';
+    document.getElementById('rcpt-confirm-heading').textContent = 'Split receipt submitted';
+    const d = new Date(expenseDate);
+    const dateLabel = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    document.getElementById('rcpt-confirm-details').textContent =
+      `${vendor || 'Receipt'} · $${totalCharged.toLocaleString('en-US',{minimumFractionDigits:2})} across ${payloads.length} jobs · ${dateLabel}`;
+    document.getElementById('rcpt-confirm-back-btn').textContent = _rcptFormOrigin === 'log' ? 'Back to Receipts Log' : 'Back to my receipts';
+
+    showScreen('s-receipts-confirm');
+    toast('Split receipt submitted ✓');
+  } catch(e) {
+    toast('Error — check connection');
+    btn.textContent = 'Submit Receipt';
+    btn.disabled = false;
+  }
+}
+
 // ── RECEIPT PHOTO UPLOAD ───────────────────────────────
 let _rcptPendingPhotos = [];
 
 function renderReceiptPhotoGrid() {
   const grid = document.getElementById('rcpt-photo-grid');
   if (!grid) return;
-  grid.innerHTML = _rcptPendingPhotos.map((url,i) =>
-    `<div class="photo-thumb" style="position:relative;">
-      <img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">
+  grid.innerHTML = _rcptPendingPhotos.map((url,i) => {
+    const inner = isPdfFile(url)
+      ? `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#F4F5F7;font-size:11px;font-weight:600;color:var(--navy);"><span style="font-size:26px;">📄</span>PDF</div>`
+      : `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
+    return `<div class="photo-thumb" style="position:relative;">
+      ${inner}
       <div onclick="removeReceiptPhoto(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;">✕</div>
-    </div>`
-  ).join('') + '<div class="photo-thumb photo-add" onclick="document.getElementById(\'rcpt-photo-input\').click()" style="font-size:28px;color:#aaa;">+</div>';
+    </div>`;
+  }).join('') + '<div class="photo-thumb photo-add" onclick="document.getElementById(\'rcpt-photo-input\').click()" style="font-size:28px;color:#aaa;">+</div>';
 }
 
 function removeReceiptPhoto(i) {
@@ -2334,12 +2658,14 @@ async function loadReceiptsLog() {
   const list = document.getElementById('rcpt-log-list');
   list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const [receipts, cats] = await Promise.all([
+    const [receipts, cats, sepSups] = await Promise.all([
       sbFetch('kencal_receipts?order=expense_date.desc&limit=1000'),
-      sbFetch('kencal_gl_mapping?select=category,gl_account&order=sort_order')
+      sbFetch('kencal_gl_mapping?select=category,gl_account&order=sort_order'),
+      sbFetch('kencal_supervisors?select=name&separate_statement=eq.true')
     ]);
     _allReceipts = receipts || [];
     _rcptCategories = cats || [];
+    _rcptSeparateStatementNames = (sepSups||[]).map(s => s.name);
     const catSel = document.getElementById('rcptlog-cat-filter');
     if (catSel) {
       catSel.innerHTML = '<option value="">All categories</option>' +
@@ -2351,13 +2677,30 @@ async function loadReceiptsLog() {
   }
 }
 
+// True for a cardholder flagged separate_statement=true on kencal_supervisors
+// (currently: Yobanny Avila) — a different company's own AMEX account, kept
+// out of Rick's main totals everywhere this is checked. Case-insensitive
+// since exact-name matching has bitten this project before (Ken/Kenneth
+// Hirschberg).
+function isSeparateStatementReceipt(r) {
+  const name = (r.cardholder_name || r.submitted_by || '').trim().toLowerCase();
+  if (!name) return false;
+  return (_rcptSeparateStatementNames||[]).some(n => n.trim().toLowerCase() === name);
+}
+
 function filterReceiptsLog() {
   const q = (document.getElementById('rcptlog-search').value || '').toLowerCase();
   const sort = document.getElementById('rcptlog-sort').value;
   const cat = document.getElementById('rcptlog-cat-filter').value;
   const needsMatchOnly = document.getElementById('rcptlog-needs-match') && document.getElementById('rcptlog-needs-match').checked;
+  const noReceiptOnly = document.getElementById('rcptlog-no-receipt') && document.getElementById('rcptlog-no-receipt').checked;
+  const dropShipOnly = document.getElementById('rcptlog-dropship') && document.getElementById('rcptlog-dropship').checked;
+  const sepStatementOnly = document.getElementById('rcptlog-sepstatement') && document.getElementById('rcptlog-sepstatement').checked;
   let rows = _allReceipts.filter(r =>
     (!needsMatchOnly || r.needs_job_match) &&
+    (!noReceiptOnly || r.no_receipt) &&
+    (!dropShipOnly || r.drop_shipment) &&
+    (!sepStatementOnly || isSeparateStatementReceipt(r)) &&
     (!cat || r.category === cat) &&
     (!q ||
       (r.vendor||'').toLowerCase().includes(q) ||
@@ -2372,8 +2715,16 @@ function filterReceiptsLog() {
   else if (sort === 'amount_desc') rows.sort((a,b) => (b.amount||0) - (a.amount||0));
   else if (sort === 'cardholder') rows.sort((a,b) => (a.cardholder_name||'').localeCompare(b.cardholder_name||''));
 
-  const total = rows.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
-  document.getElementById('rcptlog-total').textContent = `${rows.length} receipt${rows.length!==1?'s':''} · $${total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
+  // Separate-statement charges (e.g. Yobanny's) are kept out of this
+  // running total by default, same principle as the PDF Report, so this
+  // number always reads as "what's on Rick's own statement" — they still
+  // show in the list below with a badge, just called out of the total.
+  const mainRowsForTotal = sepStatementOnly ? rows : rows.filter(r => !isSeparateStatementReceipt(r));
+  const sepRowsForTotal = sepStatementOnly ? [] : rows.filter(r => isSeparateStatementReceipt(r));
+  const mainTotal = mainRowsForTotal.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
+  const sepTotal = sepRowsForTotal.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
+  document.getElementById('rcptlog-total').textContent = `${rows.length} receipt${rows.length!==1?'s':''} · $${mainTotal.toLocaleString('en-US',{minimumFractionDigits:2})}` +
+    (sepTotal > 0 ? ` (+ $${sepTotal.toLocaleString('en-US',{minimumFractionDigits:2})} on separate-company statements, not included)` : '');
 
   const list = document.getElementById('rcpt-log-list');
   if (!rows.length) { list.innerHTML = '<p style="color:var(--text2);font-size:14px;padding:8px;">No receipts match.</p>'; return; }
@@ -2387,10 +2738,10 @@ function filterReceiptsLog() {
         <div style="font-size:14px;font-weight:600;">${r.vendor || '—'} · ${amountLabel}</div>
         <span class="badge badge-navy" style="flex-shrink:0;margin-left:8px;font-size:10px;">${r.category || '—'}</span>
       </div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.needs_job_match ? ' · <span style="color:var(--attn);font-weight:600;">⚠ Needs job match</span>' : ''}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.needs_job_match ? ' · <span style="color:var(--attn);font-weight:600;">⚠ Needs job match</span>' : ''}${r.no_receipt ? ' · <span style="color:#7A5A12;font-weight:600;">📭 No receipt exists</span>' : ''}${r.drop_shipment ? ' · <span style="color:var(--navy);font-weight:600;">📦 Drop shipment</span>' : ''}${r.split_group_id ? ' · <span style="color:var(--navy);font-weight:600;">🔗 Split ('+r.split_group_id.replace(/^SPLIT-/,'')+')</span>' : ''}${isSeparateStatementReceipt(r) ? ' · <span style="color:#7A5A12;font-weight:600;">🏢 Separate company statement</span>' : ''}</div>
       <div style="font-size:12px;color:var(--text2);">${r.cardholder_name || r.submitted_by || '—'}${cardLabel} · logged by ${r.submitted_by || '—'}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
-      ${r.photo_urls && r.photo_urls.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.photo_urls.map(u=>`<a href="${u}" target="_blank"><img src="${u}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #E0E0E0;"></a>`).join('')}</div>` : ''}
+      ${r.photo_urls && r.photo_urls.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.photo_urls.map(u=>attachmentTileHtml(u,60)).join('')}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2410,14 +2761,16 @@ function exportReceiptsCSV() {
       (r.submitted_by||'').toLowerCase().includes(q)
     )
   );
-  const headers = ['Date','Cardholder','Card Last 4','Vendor','Amount','Category','GL Account','Job Number','Location','Submitted By','Notes','Photo URL(s)'];
+  const headers = ['Date','Cardholder','Card Last 4','Vendor','Amount','Category','GL Account','Job Number','Location','Submitted By','No Receipt','Drop Shipment','Separate Company Statement','Split Ref','Notes','Photo/PDF URL(s)'];
   const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
   const lines = [headers.map(esc).join(',')];
   rows.forEach(r => {
     lines.push([
       r.expense_date, r.cardholder_name, r.card_last4, r.vendor, r.amount,
       r.category, glByCat[r.category] || '', r.job_number, r.location_name,
-      r.submitted_by, r.notes, (r.photo_urls||[]).join(' | ')
+      r.submitted_by, r.no_receipt ? 'Yes' : '', r.drop_shipment ? 'Yes' : '',
+      isSeparateStatementReceipt(r) ? 'Yes' : '',
+      r.split_group_id ? r.split_group_id.replace(/^SPLIT-/,'') : '', r.notes, (r.photo_urls||[]).join(' | ')
     ].map(esc).join(','));
   });
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
@@ -2447,40 +2800,120 @@ function generateReceiptsPdfReport() {
   const glByCat = {};
   _rcptCategories.forEach(c => glByCat[c.category] = c.gl_account || '');
 
-  const rows = (_allReceipts || []).filter(r => r.expense_date >= from && r.expense_date <= to);
+  const allRows = (_allReceipts || []).filter(r => r.expense_date >= from && r.expense_date <= to);
+
+  // Separate-statement cardholders (e.g. Yobanny Avila) work for a
+  // different company with its own AMEX account — Rick doesn't reconcile
+  // against it, so their charges are split out here and never mixed into
+  // the main grand total / GL summary / cardholder totals below. They're
+  // still collected, categorized, and itemized in exactly the same format,
+  // just as a separate block further down the report.
+  const rows = allRows.filter(r => !isSeparateStatementReceipt(r));
+  const otherRows = allRows.filter(r => isSeparateStatementReceipt(r));
+  const otherCardholderNames = [...new Set(otherRows.map(r => r.cardholder_name || r.submitted_by || 'Unknown'))].sort();
+
   const grandTotal = rows.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
-
-  // GL Account + Job Number summary — one line per combination, matching
-  // exactly what gets keyed into WinTeam's General Ledger Distribution grid.
-  const glJobMap = {};
-  rows.forEach(r => {
-    const gl = glByCat[r.category] || '(no GL set)';
-    const job = r.job_number || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)');
-    const key = gl + '||' + job;
-    if (!glJobMap[key]) glJobMap[key] = {gl, job, category: r.category, amount: 0, receipts: []};
-    glJobMap[key].amount += parseFloat(r.amount) || 0;
-    glJobMap[key].receipts.push(r);
-  });
-  const glJobRows = Object.values(glJobMap).sort((a,b) => a.gl.localeCompare(b.gl) || a.job.localeCompare(b.job));
-
-  // Cardholder totals — reconciliation only, not part of the WinTeam entry.
-  const cardholderMap = {};
-  rows.forEach(r => {
-    const name = r.cardholder_name || r.submitted_by || 'Unknown';
-    cardholderMap[name] = (cardholderMap[name] || 0) + (parseFloat(r.amount) || 0);
-  });
-  const cardholderRows = Object.entries(cardholderMap).sort((a,b) => a[0].localeCompare(b[0]));
-
-  // Detail sections grouped by cardholder, each receipt with its photo(s).
-  const byCardholder = {};
-  rows.forEach(r => {
-    const name = r.cardholder_name || r.submitted_by || 'Unknown';
-    (byCardholder[name] = byCardholder[name] || []).push(r);
-  });
-  const cardholderNames = Object.keys(byCardholder).sort();
+  const otherGrandTotal = otherRows.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
 
   const fmt = n => `$${(n||0).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2})}`;
   const dateLabel = d => { const dt = new Date(d + 'T00:00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+  const splitBadge = r => r.split_group_id ? ` <span style="color:var(--navy);font-weight:700;">(🔗 split ${r.split_group_id.replace(/^SPLIT-/,'')})</span>` : '';
+
+  // Builds the GL summary / drop-shipments / cardholder totals / detail
+  // sections for one set of rows — called once for the main statement and,
+  // if there are any, once more for separate-statement cardholders, so
+  // both read in exactly the same format without duplicating this logic.
+  function buildReportSections(sectionRows) {
+    const dropShipRows = sectionRows.filter(r => r.drop_shipment);
+    const dropShipTotal = dropShipRows.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
+    const glRows = sectionRows.filter(r => !r.drop_shipment);
+
+    const glJobMap = {};
+    glRows.forEach(r => {
+      const gl = glByCat[r.category] || '(no GL set)';
+      const job = r.job_number || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)');
+      const key = gl + '||' + job;
+      if (!glJobMap[key]) glJobMap[key] = {gl, job, category: r.category, amount: 0, receipts: []};
+      glJobMap[key].amount += parseFloat(r.amount) || 0;
+      glJobMap[key].receipts.push(r);
+    });
+    const glJobRows = Object.values(glJobMap).sort((a,b) => a.gl.localeCompare(b.gl) || a.job.localeCompare(b.job));
+
+    const cardholderMap = {};
+    sectionRows.forEach(r => {
+      const name = r.cardholder_name || r.submitted_by || 'Unknown';
+      cardholderMap[name] = (cardholderMap[name] || 0) + (parseFloat(r.amount) || 0);
+    });
+    const cardholderRows = Object.entries(cardholderMap).sort((a,b) => a[0].localeCompare(b[0]));
+
+    const byCardholder = {};
+    sectionRows.forEach(r => {
+      const name = r.cardholder_name || r.submitted_by || 'Unknown';
+      (byCardholder[name] = byCardholder[name] || []).push(r);
+    });
+    const cardholderNames = Object.keys(byCardholder).sort();
+
+    const glJobBlocksHtml = glJobRows.map(g => {
+      const itemRows = g.receipts.slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date)).map(r => `
+        <tr>
+          <td>${dateLabel(r.expense_date)}</td>
+          <td>${r.cardholder_name || r.submitted_by || 'Unknown'}</td>
+          <td>${r.vendor || '—'}${r.needs_job_match ? ' <span style="color:#A32D2D;font-weight:700;">(needs job match)</span>' : ''}${r.no_receipt ? ' <span style="color:#7A5A12;font-weight:700;">(no receipt on file)</span>' : ''}${splitBadge(r)}</td>
+          <td style="text-align:right;">${fmt(r.amount)}</td>
+        </tr>`).join('');
+      return `
+        <div class="rprt-glgroup">
+          <div class="rprt-glgroup-header">
+            <span class="meta">${g.gl} · Job ${g.job} <span class="cat">— ${g.category||''}</span></span>
+            <span>${fmt(g.amount)}</span>
+          </div>
+          <table class="rprt-subtable">
+            <thead><tr><th>Date</th><th>Cardholder</th><th>Vendor</th><th style="text-align:right;">Amount</th></tr></thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+    const glJobTotal = glJobRows.reduce((s,r)=>s+r.amount,0);
+
+    const dropShipTableRows = dropShipRows.slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date)).map(r => `
+      <tr>
+        <td>${dateLabel(r.expense_date)}</td>
+        <td>${r.cardholder_name || r.submitted_by || 'Unknown'}</td>
+        <td>${r.vendor || '—'}</td>
+        <td>${r.job_number || r.location_name || '—'}</td>
+        <td style="text-align:right;">${fmt(r.amount)}</td>
+      </tr>`).join('');
+    const dropShipHtml = dropShipRows.length ? `
+      <table class="rprt-table">
+        <thead><tr><th>Date</th><th>Cardholder</th><th>Vendor</th><th>Job</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody>${dropShipTableRows}</tbody>
+      </table>
+      <div class="rprt-glgroup-grandtotal"><span>Drop Shipments Total</span><span>${fmt(dropShipTotal)}</span></div>` :
+      '<div style="font-size:13px;color:#999;">None in this date range.</div>';
+
+    const cardholderTableRows = cardholderRows.map(([name,amt]) => `<tr><td>${name}</td><td style="text-align:right;">${fmt(amt)}</td></tr>`).join('');
+
+    const detailHtml = cardholderNames.map(name => {
+      const receipts = byCardholder[name].slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date));
+      const subtotal = receipts.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+      const items = receipts.map(r => `
+        <div class="rprt-receipt">
+          <div class="details">
+            <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'} · ${fmt(r.amount)}</div>
+            <div>Category: ${r.category||'—'} ${r.needs_job_match ? '<span style="color:#A32D2D;font-weight:700;"> (needs job match)</span>' : ''}${r.no_receipt ? '<span style="color:#7A5A12;font-weight:700;"> (no receipt on file)</span>' : ''}${r.drop_shipment ? '<span style="color:#1B2A4A;font-weight:700;"> (📦 drop shipment — see Drop Shipments section)</span>' : ''}${splitBadge(r)}</div>
+            <div>Job/Location: ${r.location_name || '—'}${r.job_number ? ' ('+r.job_number+')' : ''}</div>
+            ${r.notes ? `<div>Notes: ${r.notes}</div>` : ''}
+          </div>
+          <div class="photos">${(r.photo_urls||[]).length ? (r.photo_urls||[]).map(u => isPdfFile(u) ? `<a href="${u}" target="_blank" style="width:100px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#F4F5F7;border:1px solid #ccc;border-radius:6px;text-decoration:none;color:#1B2A4A;font-size:11px;font-weight:600;"><span style="font-size:26px;">📄</span>PDF</a>` : `<img src="${u}">`).join('') : (r.no_receipt ? '<div style="font-size:11px;color:#999;font-style:italic;">No receipt exists for this charge</div>' : '<div style="font-size:11px;color:#999;">No photo</div>')}</div>
+        </div>`).join('');
+      return `<div class="rprt-cardholder-block"><h4>${name} — ${fmt(subtotal)}</h4>${items}</div>`;
+    }).join('');
+
+    return { glJobBlocksHtml, glJobTotal, dropShipHtml, dropShipTotal, cardholderTableRows, detailHtml };
+  }
+
+  const main = buildReportSections(rows);
+  const other = otherRows.length ? buildReportSections(otherRows) : null;
 
   let checkHtml = '';
   if (checkTotal != null) {
@@ -2494,46 +2927,26 @@ function generateReceiptsPdfReport() {
   } else {
     checkHtml = `<div class="rprt-check"><div>Grand total, all receipts logged<div class="amt">${fmt(grandTotal)}</div></div></div>`;
   }
+  if (otherGrandTotal > 0) {
+    checkHtml += `<div style="font-size:11px;color:var(--text2);margin-top:6px;">Excludes ${fmt(otherGrandTotal)} for ${otherCardholderNames.join(', ')} — on a separate company statement, not this one. See that section near the end of this report.</div>`;
+  }
 
-  const glJobBlocksHtml = glJobRows.map(g => {
-    const itemRows = g.receipts.slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date)).map(r => `
-      <tr>
-        <td>${dateLabel(r.expense_date)}</td>
-        <td>${r.cardholder_name || r.submitted_by || 'Unknown'}</td>
-        <td>${r.vendor || '—'}${r.needs_job_match ? ' <span style="color:#A32D2D;font-weight:700;">(needs job match)</span>' : ''}</td>
-        <td style="text-align:right;">${fmt(r.amount)}</td>
-      </tr>`).join('');
-    return `
-      <div class="rprt-glgroup">
-        <div class="rprt-glgroup-header">
-          <span class="meta">${g.gl} · Job ${g.job} <span class="cat">— ${g.category||''}</span></span>
-          <span>${fmt(g.amount)}</span>
-        </div>
-        <table class="rprt-subtable">
-          <thead><tr><th>Date</th><th>Cardholder</th><th>Vendor</th><th style="text-align:right;">Amount</th></tr></thead>
-          <tbody>${itemRows}</tbody>
+  const otherSectionHtml = other ? `
+      <div class="rprt-section">
+        <h3>Separate-Company Cardholders <span style="font-weight:400;font-size:12px;color:var(--text2);">— ${otherCardholderNames.join(', ')}, on their own statement, not included in any total above</span></h3>
+        <div class="rprt-glgroup-grandtotal"><span>Total (their own statement)</span><span>${fmt(otherGrandTotal)}</span></div>
+        <div style="font-size:12px;color:var(--text2);margin:8px 0;font-weight:600;">GL Account + Job Number Summary</div>
+        ${other.glJobBlocksHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
+        <div class="rprt-glgroup-grandtotal"><span>Subtotal</span><span>${fmt(other.glJobTotal)}</span></div>
+        ${other.dropShipTotal > 0 ? `<div style="font-size:12px;color:var(--text2);margin:14px 0 8px;font-weight:600;">Drop Shipments</div>${other.dropShipHtml}` : ''}
+        <div style="font-size:12px;color:var(--text2);margin:14px 0 8px;font-weight:600;">Cardholder Totals</div>
+        <table class="rprt-table">
+          <thead><tr><th>Cardholder</th><th style="text-align:right;">Amount</th></tr></thead>
+          <tbody>${other.cardholderTableRows}</tbody>
         </table>
-      </div>`;
-  }).join('');
-  const glJobTotal = glJobRows.reduce((s,r)=>s+r.amount,0);
-
-  const cardholderTableRows = cardholderRows.map(([name,amt]) => `<tr><td>${name}</td><td style="text-align:right;">${fmt(amt)}</td></tr>`).join('');
-
-  const detailHtml = cardholderNames.map(name => {
-    const receipts = byCardholder[name].slice().sort((a,b) => a.expense_date.localeCompare(b.expense_date));
-    const subtotal = receipts.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
-    const items = receipts.map(r => `
-      <div class="rprt-receipt">
-        <div class="details">
-          <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'} · ${fmt(r.amount)}</div>
-          <div>Category: ${r.category||'—'} ${r.needs_job_match ? '<span style="color:#A32D2D;font-weight:700;"> (needs job match)</span>' : ''}</div>
-          <div>Job/Location: ${r.location_name || '—'}${r.job_number ? ' ('+r.job_number+')' : ''}</div>
-          ${r.notes ? `<div>Notes: ${r.notes}</div>` : ''}
-        </div>
-        <div class="photos">${(r.photo_urls||[]).map(u=>`<img src="${u}">`).join('') || '<div style="font-size:11px;color:#999;">No photo</div>'}</div>
-      </div>`).join('');
-    return `<div class="rprt-cardholder-block"><h4>${name} — ${fmt(subtotal)}</h4>${items}</div>`;
-  }).join('');
+        <div style="font-size:12px;color:var(--text2);margin:14px 0 8px;font-weight:600;">Receipt Detail &amp; Photos</div>
+        ${other.detailHtml}
+      </div>` : '';
 
   const html = `
     <div class="rprt-page">
@@ -2545,20 +2958,26 @@ function generateReceiptsPdfReport() {
       <div class="rprt-section">${checkHtml}</div>
       <div class="rprt-section">
         <h3>GL Account + Job Number Summary (for WinTeam entry)</h3>
-        ${glJobBlocksHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
-        <div class="rprt-glgroup-grandtotal"><span>Total</span><span>${fmt(glJobTotal)}</span></div>
+        ${main.glJobBlocksHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
+        <div class="rprt-glgroup-grandtotal"><span>Total</span><span>${fmt(main.glJobTotal)}</span></div>
+        ${main.dropShipTotal > 0 ? `<div style="font-size:11px;color:var(--text2);margin-top:6px;">Excludes ${fmt(main.dropShipTotal)} in drop shipments — see the Drop Shipments section below. GL summary total + drop shipments = ${fmt(main.glJobTotal + main.dropShipTotal)}, matching the grand total above.</div>` : ''}
+      </div>
+      <div class="rprt-section">
+        <h3>Drop Shipments <span style="font-weight:400;font-size:12px;color:var(--text2);">— entered via WinTeam Inventory, not in the summary above</span></h3>
+        ${main.dropShipHtml}
       </div>
       <div class="rprt-section">
         <h3>Cardholder Totals (reconciliation only)</h3>
         <table class="rprt-table">
           <thead><tr><th>Cardholder</th><th style="text-align:right;">Amount</th></tr></thead>
-          <tbody>${cardholderTableRows}</tbody>
+          <tbody>${main.cardholderTableRows}</tbody>
         </table>
       </div>
       <div class="rprt-section">
         <h3>Receipt Detail &amp; Photos, by Cardholder</h3>
-        ${detailHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
+        ${main.detailHtml || '<div style="font-size:13px;color:#999;">No receipts in this date range.</div>'}
       </div>
+      ${otherSectionHtml}
     </div>`;
 
   const container = document.getElementById('rcpt-print-container');
@@ -2646,7 +3065,11 @@ async function loadCardholdersAdmin() {
   const list = document.getElementById('rcpt-cardholder-list');
   list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const sups = await sbFetch('kencal_supervisors?select=id,name,role,has_card,receipts_admin&active=eq.true&order=name');
+    const sups = await sbFetch('kencal_supervisors?select=id,name,role,has_card,receipts_admin,separate_statement&active=eq.true&order=name');
+    // Cached for the PDF Report / Receipts Log so they can tell, without
+    // an extra round trip, which cardholders are on a different company's
+    // statement and must be kept out of the main totals.
+    _rcptSeparateStatementNames = (sups||[]).filter(s => s.separate_statement).map(s => s.name);
     list.innerHTML = sups.map(s => `
       <div class="card" style="margin-bottom:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;">
         <div>
@@ -2659,6 +3082,9 @@ async function loadCardholdersAdmin() {
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
             <input type="checkbox" ${s.receipts_admin ? 'checked' : ''} onchange="toggleReceiptsAdmin(${s.id}, this.checked)"> Sees Receipts Log
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+            <input type="checkbox" ${s.separate_statement ? 'checked' : ''} onchange="toggleSeparateStatement(${s.id}, this.checked)"> Separate company (own statement)
           </label>
         </div>
       </div>`).join('');
@@ -2687,6 +3113,185 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
     if (!res.ok) throw new Error(await res.text());
     toast(receiptsAdmin ? 'Receipts Log access granted ✓' : 'Receipts Log access removed');
   } catch(e) { toast('Error saving — check connection'); }
+}
+
+// A "separate statement" cardholder (e.g. Yobanny Avila) works for a
+// different company with its own AMEX account. Their receipts are still
+// collected/categorized/sorted exactly like everyone else's, but the PDF
+// Report keeps them out of the main grand total, GL summary, and
+// cardholder totals so they never get mixed into Rick's own statement
+// reconciliation — see generateReceiptsPdfReport().
+async function toggleSeparateStatement(id, separateStatement) {
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_supervisors?id=eq.${id}`, {
+      method: 'PATCH', headers: rcptHeaders(),
+      body: JSON.stringify({separate_statement: separateStatement})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast(separateStatement ? 'Marked as a separate-statement cardholder ✓' : 'Back to the main statement');
+    loadCardholdersAdmin();
+  } catch(e) { toast('Error saving — check connection'); }
+}
+
+// ── LOG A RECEIPT ON SOMEONE ELSE'S CARD (ADMIN) ───────
+// Shows a dropdown of real cardholders on the New Receipt form when the
+// person filling it out has receipts_admin — picking one fills the
+// existing free-text "Cardholder" field with an exact, consistently-
+// spelled name (important since the PDF report groups by that exact
+// string), while still leaving it editable for an edge case.
+async function loadReceiptCardholders() {
+  const sel = document.getElementById('rcpt-cardholder-quickpick');
+  if (!sel) return;
+  try {
+    const sups = await sbFetch('kencal_supervisors?select=name&has_card=eq.true&active=eq.true&order=name');
+    sel.innerHTML = '<option value="">— Select cardholder —</option>' +
+      (sups||[]).map(s => `<option value="${s.name.replace(/"/g,'&quot;')}">${s.name}</option>`).join('') +
+      '<option value="__other__">Someone else (type name below)</option>';
+  } catch(e) {
+    sel.innerHTML = '<option value="">— Select cardholder —</option>';
+  }
+}
+
+function onCardholderQuickpick(value) {
+  if (!value) return;
+  const field = document.getElementById('rcpt-cardholder');
+  if (value === '__other__') { field.value = ''; field.focus(); return; }
+  field.value = value;
+}
+
+// ── RECURRING CHARGES (SHORTCUT FOR SUBSCRIPTIONS, ETC.) ──
+// Purely a data-entry shortcut — picking one pre-fills the New Receipt
+// form's vendor/category/job/cardholder/amount, all of which stay fully
+// editable before submitting. It does not auto-create receipts and does
+// not link back to the receipt afterward.
+async function loadRecurringChargesQuickfill() {
+  const sel = document.getElementById('rcpt-recurring-quickfill');
+  if (!sel) return;
+  try {
+    _rcptRecurring = await sbFetch('kencal_recurring_charges?select=id,vendor,category,job_number,location_id,location_name,cardholder_name,typical_amount,default_no_receipt&active=eq.true&order=vendor');
+  } catch(e) { _rcptRecurring = []; }
+  sel.innerHTML = '<option value="">— Quick-fill from a recurring charge —</option>' +
+    (_rcptRecurring||[]).map(r => {
+      const amt = r.typical_amount != null ? ` — $${parseFloat(r.typical_amount).toLocaleString('en-US',{minimumFractionDigits:2})}` : '';
+      const who = r.cardholder_name ? ` (${r.cardholder_name})` : '';
+      return `<option value="${r.id}">${r.vendor}${amt}${who}</option>`;
+    }).join('');
+}
+
+function applyRecurringChargeQuickfill(id) {
+  const rc = (_rcptRecurring||[]).find(x => x.id === id);
+  if (!rc) return;
+  document.getElementById('rcpt-vendor').value = rc.vendor || '';
+  if (rc.job_number || rc.location_name) {
+    document.getElementById('rcpt-loc-search').value = rc.location_name || '';
+    document.getElementById('rcpt-loc-id').value = rc.location_id || '';
+    document.getElementById('rcpt-loc-name').value = rc.location_name || '';
+    document.getElementById('rcpt-job-number').value = rc.job_number || '';
+    document.getElementById('rcpt-needs-match').value = '';
+    document.getElementById('rcpt-manual-job-row').style.display = 'none';
+  }
+  if (rc.category) selectMealCategoryValue(rc.category);
+  if (rc.cardholder_name) document.getElementById('rcpt-cardholder').value = rc.cardholder_name;
+  if (rc.typical_amount != null) document.getElementById('rcpt-amount').value = rc.typical_amount;
+  document.getElementById('rcpt-no-receipt').checked = !!rc.default_no_receipt;
+  onNoReceiptToggle(!!rc.default_no_receipt);
+  toast(`Prefilled from "${rc.vendor}" — double check the amount for this month`);
+  const amountField = document.getElementById('rcpt-amount');
+  amountField.focus();
+  amountField.select();
+}
+
+async function loadRecurringChargesAdmin() {
+  const list = document.getElementById('rcpt-recurring-list');
+  list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  // Also populate the "add" form's dropdowns while we're here.
+  const catSel = document.getElementById('newrec-category');
+  const locSel = document.getElementById('newrec-location');
+  const chSel = document.getElementById('newrec-cardholder');
+  try {
+    const [charges, cats, locs, sups] = await Promise.all([
+      sbFetch('kencal_recurring_charges?select=id,vendor,category,job_number,location_name,cardholder_name,typical_amount,default_no_receipt,active&order=vendor'),
+      sbFetch('kencal_gl_mapping?select=category,sort_order&order=sort_order'),
+      sbFetch('kencal_locations?active=eq.true&select=id,display_name,job_number&order=display_name'),
+      sbFetch('kencal_supervisors?select=name&has_card=eq.true&active=eq.true&order=name')
+    ]);
+    if (catSel) catSel.innerHTML = '<option value="">— Category —</option>' + (cats||[]).map(c => `<option value="${c.category.replace(/"/g,'&quot;')}">${c.category}</option>`).join('');
+    if (locSel) locSel.innerHTML = '<option value="">— Job / location (optional) —</option>' + (locs||[]).map(l => `<option value="${l.id}" data-job="${l.job_number||''}" data-name="${(l.display_name||'').replace(/"/g,'&quot;')}">${l.display_name}${l.job_number ? ' ('+l.job_number+')' : ''}</option>`).join('');
+    if (chSel) chSel.innerHTML = '<option value="">— Usually charged to (optional) —</option>' + (sups||[]).map(s => `<option value="${s.name.replace(/"/g,'&quot;')}">${s.name}</option>`).join('');
+
+    if (!charges || !charges.length) {
+      list.innerHTML = '<p style="color:var(--text2);font-size:13px;padding:8px;">No recurring charges set up yet.</p>';
+      return;
+    }
+    list.innerHTML = charges.map(c => `
+      <div class="card" style="margin-bottom:8px;padding:12px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-size:14px;font-weight:600;">${c.vendor}${c.typical_amount != null ? ' · $'+parseFloat(c.typical_amount).toLocaleString('en-US',{minimumFractionDigits:2}) : ''}</div>
+            <div style="font-size:12px;color:var(--text2);">${c.category || '—'}${c.job_number ? ' · Job '+c.job_number : ''}${c.cardholder_name ? ' · '+c.cardholder_name : ''}${c.default_no_receipt ? ' · <span style="color:#7A5A12;">no receipt expected</span>' : ''}</div>
+          </div>
+          <button class="btn-secondary" style="margin:0;padding:6px 10px;font-size:11px;" onclick="deleteRecurringCharge(${c.id})">Delete</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:8px;">
+          <input type="checkbox" ${c.active ? 'checked' : ''} onchange="toggleRecurringChargeActive(${c.id}, this.checked)"> Active (shows up in the quick-fill list)
+        </label>
+      </div>`).join('');
+  } catch(e) {
+    list.innerHTML = '<p style="color:var(--fail);font-size:13px;padding:8px;">Error loading recurring charges.</p>';
+  }
+}
+
+async function addRecurringCharge() {
+  const vendor = document.getElementById('newrec-vendor').value.trim();
+  if (!vendor) { toast('Please enter a vendor name'); return; }
+  const locSel = document.getElementById('newrec-location');
+  const locOpt = locSel.options[locSel.selectedIndex];
+  const payload = {
+    vendor,
+    category: document.getElementById('newrec-category').value || null,
+    location_id: locSel.value || null,
+    job_number: locSel.value ? (locOpt.getAttribute('data-job') || null) : null,
+    location_name: locSel.value ? (locOpt.getAttribute('data-name') || null) : null,
+    cardholder_name: document.getElementById('newrec-cardholder').value || null,
+    typical_amount: document.getElementById('newrec-amount').value ? parseFloat(document.getElementById('newrec-amount').value) : null,
+    default_no_receipt: document.getElementById('newrec-no-receipt').checked,
+    active: true
+  };
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_recurring_charges', {
+      method: 'POST', headers: rcptHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast('Recurring charge added ✓');
+    document.getElementById('newrec-vendor').value = '';
+    document.getElementById('newrec-amount').value = '';
+    document.getElementById('newrec-no-receipt').checked = false;
+    loadRecurringChargesAdmin();
+  } catch(e) { toast('Error saving — check connection'); }
+}
+
+async function toggleRecurringChargeActive(id, active) {
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_recurring_charges?id=eq.${id}`, {
+      method: 'PATCH', headers: rcptHeaders(),
+      body: JSON.stringify({active, updated_at: new Date().toISOString()})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast(active ? 'Marked active ✓' : 'Marked inactive');
+  } catch(e) { toast('Error saving — check connection'); }
+}
+
+async function deleteRecurringCharge(id) {
+  if (!confirm('Delete this recurring charge shortcut? Past receipts already logged are not affected.')) return;
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_recurring_charges?id=eq.${id}`, {
+      method: 'DELETE', headers: rcptHeaders()
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast('Deleted ✓');
+    loadRecurringChargesAdmin();
+  } catch(e) { toast('Error deleting — check connection'); }
 }
 
 </script>
@@ -2862,7 +3467,7 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
     <div class="top-bar-logo">Kencal Pro</div>
   </div>
   <div class="scroll-body">
-    <button class="btn-primary" onclick="resetReceiptForm();showScreen('s-receipts-new')">+ New Receipt</button>
+    <button class="btn-primary" onclick="_rcptFormOrigin='home';resetReceiptForm();showScreen('s-receipts-new')">+ New Receipt</button>
     <div style="display:flex;gap:8px;margin-top:4px;">
       <input type="text" id="rcpt-search" placeholder="🔍 Search by vendor or job…" oninput="filterMyReceipts(this.value)" style="flex:1;background:#F4F5F7;border:none;border-radius:10px;padding:9px 12px;font-size:13px;">
     </div>
@@ -2876,30 +3481,43 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
 ══════════════════════════════════════════ -->
 <div class="screen" id="s-receipts-new">
   <div class="top-bar">
-    <button class="top-bar-back" onclick="showScreen('s-receipts-home');loadMyReceipts()">‹</button>
+    <button class="top-bar-back" onclick="receiptsBack()">‹</button>
     <div class="top-bar-title" id="rcpt-form-title">New Receipt</div>
     <div class="top-bar-logo">Kencal Pro</div>
   </div>
   <div class="scroll-body">
     <div class="card">
+      <div id="rcpt-split-edit-banner" style="display:none;font-size:12px;font-weight:600;color:var(--navy);background:#F4F5F7;border-radius:8px;padding:8px 10px;margin-bottom:10px;"></div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">⚡ Recurring charge? <span style="color:var(--text2);font-weight:400;">(optional shortcut)</span></label>
+        <select id="rcpt-recurring-quickfill" onchange="applyRecurringChargeQuickfill(parseInt(this.value)||0);this.value='';">
+          <option value="">— Quick-fill from a recurring charge —</option>
+        </select>
+      </div>
       <div class="input-group" style="margin-bottom:10px;">
         <label class="field-label">Date on receipt</label>
         <input type="date" id="rcpt-date">
       </div>
-      <div class="input-group" style="margin-bottom:10px;">
-        <label class="field-label">Job / location <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
-        <div style="position:relative;">
-          <input type="text" id="rcpt-loc-search" placeholder="Search jobs / locations, or 'Office'…" oninput="filterReceiptLocations(this.value)" onfocus="filterReceiptLocations(this.value)" autocomplete="off">
-          <div id="rcpt-loc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:0.5px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer;background:#F4F5F7;border-radius:10px;padding:10px 12px;">
+        <input type="checkbox" id="rcpt-split-toggle" onchange="onSplitToggle(this.checked)" style="margin-top:2px;">
+        <span>🔀 Split this receipt across multiple jobs <span style="color:var(--text2);">(one purchase, costs coded to more than one job)</span></span>
+      </label>
+      <div id="rcpt-job-single-group">
+        <div class="input-group" style="margin-bottom:10px;">
+          <label class="field-label">Job / location <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
+          <div style="position:relative;">
+            <input type="text" id="rcpt-loc-search" placeholder="Search jobs / locations, or 'Office'…" oninput="filterReceiptLocations(this.value)" onfocus="filterReceiptLocations(this.value)" autocomplete="off">
+            <div id="rcpt-loc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:0.5px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+          </div>
+          <div id="rcpt-manual-job-row" style="display:none;margin-top:8px;">
+            <input type="text" id="rcpt-manual-job-text" placeholder="Type the job name / site as best you know it…" onblur="applyManualJobEntry()" style="margin-bottom:4px;">
+            <div style="font-size:11px;color:var(--attn);">This job isn't in the system yet — it'll be flagged for an admin to match up later. Your receipt still saves normally.</div>
+          </div>
+          <input type="hidden" id="rcpt-loc-id">
+          <input type="hidden" id="rcpt-loc-name">
+          <input type="hidden" id="rcpt-job-number">
+          <input type="hidden" id="rcpt-needs-match">
         </div>
-        <div id="rcpt-manual-job-row" style="display:none;margin-top:8px;">
-          <input type="text" id="rcpt-manual-job-text" placeholder="Type the job name / site as best you know it…" onblur="applyManualJobEntry()" style="margin-bottom:4px;">
-          <div style="font-size:11px;color:var(--attn);">This job isn't in the system yet — it'll be flagged for an admin to match up later. Your receipt still saves normally.</div>
-        </div>
-        <input type="hidden" id="rcpt-loc-id">
-        <input type="hidden" id="rcpt-loc-name">
-        <input type="hidden" id="rcpt-job-number">
-        <input type="hidden" id="rcpt-needs-match">
       </div>
       <div class="input-group" style="margin-bottom:10px;">
         <label class="field-label">Vendor</label>
@@ -2907,8 +3525,8 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
       </div>
       <div class="input-row">
         <div class="input-group">
-          <label class="field-label">Amount ($)</label>
-          <input type="number" id="rcpt-amount" placeholder="0.00" step="0.01" min="0">
+          <label class="field-label" id="rcpt-amount-label">Amount ($)</label>
+          <input type="number" id="rcpt-amount" placeholder="0.00" step="0.01" min="0" oninput="updateSplitCalc()">
         </div>
         <div class="input-group">
           <label class="field-label">Category</label>
@@ -2923,8 +3541,24 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
           <button type="button" onclick="resetMealWizard(true)" style="margin-left:8px;background:none;border:none;color:var(--text2);font-size:12px;text-decoration:underline;cursor:pointer;">change</button>
         </div>
       </div>
+      <div id="rcpt-split-section" style="display:none;margin-top:12px;padding:12px;background:#F4F5F7;border-radius:10px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Enter the total on the receipt above (as "Total amount charged"), the sales tax it included, and the pre-tax amount for each job. The app splits the tax proportionally across the jobs and rounds the last line to make the split match exactly — you never have to do the tax math.</div>
+        <div class="input-group" style="margin-bottom:12px;">
+          <label class="field-label">Sales tax on this receipt ($)</label>
+          <input type="number" id="rcpt-split-tax" placeholder="0.00" step="0.01" min="0" oninput="updateSplitCalc()">
+        </div>
+        <div id="rcpt-split-lines"></div>
+        <button type="button" class="btn-secondary" style="margin:8px 0 4px;padding:8px;font-size:12px;" onclick="addSplitLine()">+ Add another job</button>
+        <div id="rcpt-split-status" style="font-size:12px;font-weight:600;margin-top:8px;padding:8px 10px;border-radius:8px;"></div>
+      </div>
     </div>
     <div class="card">
+      <div class="input-group" id="rcpt-cardholder-admin-row" style="display:none;margin-bottom:10px;">
+        <label class="field-label">Logging this for…</label>
+        <select id="rcpt-cardholder-quickpick" onchange="onCardholderQuickpick(this.value)">
+          <option value="">— Select cardholder —</option>
+        </select>
+      </div>
       <div class="input-row" style="margin-bottom:8px;">
         <div class="input-group">
           <label class="field-label">Cardholder</label>
@@ -2943,16 +3577,27 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
       </div>
     </div>
     <div class="card">
-      <div class="field-label" style="margin-bottom:10px;">📷 Receipt photo</div>
-      <div class="photo-grid" id="rcpt-photo-grid">
-        <div class="photo-thumb photo-add" onclick="document.getElementById('rcpt-photo-input').click()" style="font-size:28px;color:#aaa;">+</div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="rcpt-no-receipt" onchange="onNoReceiptToggle(this.checked)" style="margin-top:2px;">
+        <span>No receipt exists for this charge <span style="color:var(--text2);">(bank fee, interest charge, etc. — nothing was ever generated)</span></span>
+      </label>
+      <label id="rcpt-dropship-row" style="display:none;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="rcpt-drop-shipment" style="margin-top:2px;">
+        <span>📦 Drop-shipped straight to the job <span style="color:var(--text2);">(entering this in WinTeam Inventory instead — keep it out of the GL summary so it isn't double-booked)</span></span>
+      </label>
+      <div id="rcpt-photo-section">
+        <div class="field-label" style="margin-bottom:10px;">📷 Receipt photo or PDF</div>
+        <div class="photo-grid" id="rcpt-photo-grid">
+          <div class="photo-thumb photo-add" onclick="document.getElementById('rcpt-photo-input').click()" style="font-size:28px;color:#aaa;">+</div>
+        </div>
+        <input type="file" id="rcpt-photo-input" accept="image/*,application/pdf" capture="environment" multiple style="display:none;" onchange="handleReceiptPhotos(this)">
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;" id="rcpt-photo-status"></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;">Downloaded an invoice instead of a paper receipt? You can attach the PDF directly here.</div>
       </div>
-      <input type="file" id="rcpt-photo-input" accept="image/*" capture="environment" multiple style="display:none;" onchange="handleReceiptPhotos(this)">
-      <div style="font-size:11px;color:var(--text2);margin-top:6px;" id="rcpt-photo-status"></div>
     </div>
     <input type="hidden" id="rcpt-edit-id">
     <button class="btn-primary" onclick="submitReceipt()" id="rcpt-submit-btn">Submit Receipt</button>
-    <button class="btn-secondary" onclick="showScreen('s-receipts-home');loadMyReceipts()">Cancel</button>
+    <button class="btn-secondary" onclick="receiptsBack()">Cancel</button>
   </div>
 </div>
 
@@ -2961,7 +3606,7 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
 ══════════════════════════════════════════ -->
 <div class="screen" id="s-receipts-confirm">
   <div class="top-bar">
-    <button class="top-bar-back" onclick="showScreen('s-receipts-home');loadMyReceipts()">‹</button>
+    <button class="top-bar-back" onclick="receiptsBack()">‹</button>
     <div class="top-bar-title" id="rcpt-confirm-title">Submitted</div>
     <div class="top-bar-logo">Kencal Pro</div>
   </div>
@@ -2970,7 +3615,7 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
     <div style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px;" id="rcpt-confirm-heading">Receipt submitted</div>
     <div style="font-size:14px;color:var(--text2);margin-bottom:32px;" id="rcpt-confirm-details"></div>
     <button class="btn-primary" onclick="resetReceiptForm();showScreen('s-receipts-new')">+ Add another</button>
-    <button class="btn-secondary" onclick="showScreen('s-receipts-home');loadMyReceipts()">Back to my receipts</button>
+    <button class="btn-secondary" id="rcpt-confirm-back-btn" onclick="receiptsBack()">Back to my receipts</button>
   </div>
 </div>
 
@@ -2999,11 +3644,24 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--attn);font-weight:600;">
       <input type="checkbox" id="rcptlog-needs-match" onchange="filterReceiptsLog()"> Show only receipts needing a job match
     </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7A5A12;font-weight:600;">
+      <input type="checkbox" id="rcptlog-no-receipt" onchange="filterReceiptsLog()"> Show only "no receipt exists" charges
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--navy);font-weight:600;">
+      <input type="checkbox" id="rcptlog-dropship" onchange="filterReceiptsLog()"> Show only drop shipments
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7A5A12;font-weight:600;">
+      <input type="checkbox" id="rcptlog-sepstatement" onchange="filterReceiptsLog()"> Show only separate-company charges
+    </label>
     <div style="display:flex;gap:8px;">
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="exportReceiptsCSV()">⬇ CSV</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openReceiptsPdfExport()">🖨 PDF Report</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadReceiptCategoriesAdmin();showScreen('s-receipts-categories')">GL Codes</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadCardholdersAdmin();showScreen('s-receipts-cardholders')">Cardholders</button>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadRecurringChargesAdmin();showScreen('s-receipts-recurring')">🔁 Recurring Charges</button>
+      <button class="btn-primary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openReceiptFormForAdmin()">+ Log a receipt</button>
     </div>
   </div>
   <div class="scroll-body" style="padding-top:8px;">
@@ -3080,6 +3738,43 @@ async function toggleReceiptsAdmin(id, receiptsAdmin) {
   <div class="scroll-body">
     <div style="font-size:12px;color:var(--text2);">Check who carries a company card. Only checked people see the Receipts tile on their home screen.</div>
     <div id="rcpt-cardholder-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     RECEIPTS - MANAGE RECURRING CHARGES (ADMIN)
+══════════════════════════════════════════ -->
+<div class="screen" id="s-receipts-recurring">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-receipts-log');loadReceiptsLog()">‹</button>
+    <div class="top-bar-title">Recurring Charges</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <div style="font-size:12px;color:var(--text2);">A shortcut list for charges that repeat monthly — software licenses, insurance, domain renewals, etc. Picking one on the New Receipt form pre-fills vendor/category/job/cardholder and a typical amount; the amount still needs to be confirmed for the actual month before submitting.</div>
+    <div id="rcpt-recurring-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    <div class="card">
+      <div class="field-label" style="margin-bottom:10px;">Add a recurring charge</div>
+      <div class="input-group" style="margin-bottom:8px;">
+        <input type="text" id="newrec-vendor" placeholder="Vendor name (e.g. Adobe Creative Cloud)">
+      </div>
+      <div class="input-group" style="margin-bottom:8px;">
+        <select id="newrec-category"><option value="">— Category —</option></select>
+      </div>
+      <div class="input-group" style="margin-bottom:8px;">
+        <select id="newrec-location"><option value="">— Job / location (optional) —</option></select>
+      </div>
+      <div class="input-group" style="margin-bottom:8px;">
+        <select id="newrec-cardholder"><option value="">— Usually charged to (optional) —</option></select>
+      </div>
+      <div class="input-group" style="margin-bottom:8px;">
+        <input type="number" id="newrec-amount" placeholder="Typical amount ($, optional)" step="0.01" min="0">
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:12px;">
+        <input type="checkbox" id="newrec-no-receipt"> This charge never has a receipt (bank fee, interest, etc.)
+      </label>
+      <button class="btn-primary" onclick="addRecurringCharge()">+ Add recurring charge</button>
+    </div>
   </div>
 </div>
 
