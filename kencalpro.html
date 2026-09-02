@@ -2742,8 +2742,22 @@ function filterReceiptsLog() {
       <div style="font-size:12px;color:var(--text2);">${r.cardholder_name || r.submitted_by || '—'}${cardLabel} · logged by ${r.submitted_by || '—'}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
       ${r.photo_urls && r.photo_urls.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.photo_urls.map(u=>attachmentTileHtml(u,60)).join('')}</div>` : ''}
+      <button onclick="editReceiptFromLog(${r.id})" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;margin-top:8px;">Edit</button>
     </div>`;
   }).join('');
+}
+
+// Opens any receipt for editing from Receipts Log — this is where an
+// admin (Mary/Keri/Rick) sets the drop-shipment flag, separate-statement
+// status, or fixes anything else after the fact, often well after the
+// cardholder's own 3-day self-edit window (RCPT_EDIT_DAYS) has closed.
+// Receipts Log is already gated to receipts_admin, so this button carries
+// no time restriction of its own.
+async function editReceiptFromLog(id) {
+  _rcptFormOrigin = 'log';
+  if (!_rcptLocs.length) await loadReceiptLocations();
+  if (!_rcptCategories.length) await loadReceiptCategories();
+  editReceipt(id);
 }
 
 function exportReceiptsCSV() {
