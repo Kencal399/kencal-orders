@@ -2983,10 +2983,44 @@ function generateReceiptsPdfReport() {
   const container = document.getElementById('rcpt-print-container');
   container.innerHTML = html;
   document.body.classList.add('printing-receipts-report');
-  setTimeout(() => {
-    window.print();
+
+  // Bug fix (2026-09): removing the printing-receipts-report class right
+  // after calling window.print() assumed print() always blocks until the
+  // dialog closes. It doesn't in every browser — on some (notably Safari),
+  // window.print() returns before the print/PDF rendering actually
+  // happens, so the class was already gone by the time the snapshot was
+  // taken, and the print output showed whatever screen was underneath
+  // (e.g. the "Generate Report" date-picker screen) instead of the report.
+  // Fix: wait for the browser's own 'afterprint' event, which fires once
+  // the print dialog has actually closed, with a generous fallback in
+  // case a browser/webview doesn't emit it reliably.
+  let _rcptPrintCleanedUp = false;
+  function cleanupPrintingReceiptsReport() {
+    if (_rcptPrintCleanedUp) return;
+    _rcptPrintCleanedUp = true;
     document.body.classList.remove('printing-receipts-report');
-  }, 150);
+    window.removeEventListener('afterprint', cleanupPrintingReceiptsReport);
+  }
+  window.addEventListener('afterprint', cleanupPrintingReceiptsReport);
+
+  // Also give embedded receipt photos a moment to finish loading before
+  // printing — a photo-heavy report could otherwise print with blank or
+  // broken images if they hadn't decoded yet. Capped at 3s total so one
+  // slow or broken photo link never blocks printing indefinitely.
+  const pendingImages = Array.from(container.querySelectorAll('img')).filter(img => !img.complete);
+  const imagesReady = pendingImages.length
+    ? Promise.race([
+        Promise.all(pendingImages.map(img => new Promise(res => { img.onload = img.onerror = res; }))),
+        new Promise(res => setTimeout(res, 3000))
+      ])
+    : Promise.resolve();
+
+  imagesReady.then(() => {
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanupPrintingReceiptsReport, 5000);
+    }, 150);
+  });
 }
 
 // ── MANAGE CATEGORIES & GL CODES (ADMIN) ───────────────
