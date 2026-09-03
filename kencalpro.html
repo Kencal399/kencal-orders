@@ -203,6 +203,15 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
 .rprt-receipt .photos{display:flex;gap:6px;flex-wrap:wrap;max-width:220px;}
 .rprt-receipt .photos img{width:100px;height:100px;object-fit:cover;border-radius:6px;border:1px solid #ccc;}
 @media print {
+  /* Browsers hide background colors/images when printing by default
+     unless the person printing checks "Background graphics" in the print
+     dialog (a setting most people never touch) — without this, the navy
+     header, gold accents, and gray GL-group backgrounds all print as
+     plain white, which is almost certainly why a real printed report
+     looked so different from the polished sample (the sample was
+     rendered with backgrounds forced on). print-color-adjust: exact
+     forces backgrounds to print regardless of that dialog setting. */
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
   body.printing-receipts-report > *:not(#rcpt-print-container){display:none !important;}
   body.printing-receipts-report #rcpt-print-container{display:block !important;}
   .rprt-cardholder-block{break-inside:avoid;}
