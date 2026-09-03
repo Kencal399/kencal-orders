@@ -200,9 +200,9 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
 .rprt-receipt{display:flex;gap:12px;padding:10px;border:0.5px solid #E0E0E0;border-radius:8px;margin-bottom:8px;page-break-inside:avoid;}
 .rprt-receipt .details{flex:1;font-size:12px;line-height:1.6;}
 .rprt-receipt .details b{color:#1B2A4A;}
-.rprt-receipt .photos{display:flex;gap:8px;flex-wrap:wrap;max-width:280px;}
-.rprt-receipt .photos img{width:130px;height:130px;object-fit:cover;border-radius:6px;border:1px solid #ccc;}
-@page { margin: 0.5in; }
+.rprt-receipt .photos{display:flex;gap:6px;flex-wrap:wrap;max-width:220px;}
+.rprt-receipt .photos img{width:100px;height:100px;object-fit:cover;border-radius:6px;border:1px solid #ccc;}
+@page { margin: 0.25in; }
 @media print {
   /* Browsers hide background colors/images when printing by default
      unless the person printing checks "Background graphics" in the print
@@ -2935,7 +2935,7 @@ function generateReceiptsPdfReport() {
             <div>Job/Location: ${r.location_name || '—'}${r.job_number ? ' ('+r.job_number+')' : ''}</div>
             ${r.notes ? `<div>Notes: ${r.notes}</div>` : ''}
           </div>
-          <div class="photos">${(r.photo_urls||[]).length ? (r.photo_urls||[]).map(u => isPdfFile(u) ? `<a href="${u}" target="_blank" style="width:130px;height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#F4F5F7;border:1px solid #ccc;border-radius:6px;text-decoration:none;color:#1B2A4A;font-size:11px;font-weight:600;"><span style="font-size:26px;">📄</span>PDF</a>` : `<img src="${u}">`).join('') : (r.no_receipt ? '<div style="font-size:11px;color:#999;font-style:italic;">No receipt exists for this charge</div>' : '<div style="font-size:11px;color:#999;">No photo</div>')}</div>
+          <div class="photos">${(r.photo_urls||[]).length ? (r.photo_urls||[]).map(u => isPdfFile(u) ? `<a href="${u}" target="_blank" style="width:100px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#F4F5F7;border:1px solid #ccc;border-radius:6px;text-decoration:none;color:#1B2A4A;font-size:11px;font-weight:600;"><span style="font-size:26px;">📄</span>PDF</a>` : `<img src="${u}">`).join('') : (r.no_receipt ? '<div style="font-size:11px;color:#999;font-style:italic;">No receipt exists for this charge</div>' : '<div style="font-size:11px;color:#999;">No photo</div>')}</div>
         </div>`).join('');
       return `<div class="rprt-cardholder-block"><h4>${name} — ${fmt(subtotal)}</h4>${items}</div>`;
     }).join('');
