@@ -2713,6 +2713,12 @@ function filterReceiptsLog() {
   const noReceiptOnly = document.getElementById('rcptlog-no-receipt') && document.getElementById('rcptlog-no-receipt').checked;
   const dropShipOnly = document.getElementById('rcptlog-dropship') && document.getElementById('rcptlog-dropship').checked;
   const sepStatementOnly = document.getElementById('rcptlog-sepstatement') && document.getElementById('rcptlog-sepstatement').checked;
+  // Amount matching: strip everything but digits/decimal from the query so
+  // "$342.18", "342.18", and "342" all work — a bare "342" matches
+  // "342.18" too (substring match), same forgiving behavior as the text
+  // fields below. Skipped entirely when the query has no digits, so a
+  // plain text search like "shell" doesn't accidentally match every row.
+  const qAmount = q.replace(/[^0-9.]/g, '');
   let rows = _allReceipts.filter(r =>
     (!needsMatchOnly || r.needs_job_match) &&
     (!noReceiptOnly || r.no_receipt) &&
@@ -2724,7 +2730,8 @@ function filterReceiptsLog() {
       (r.location_name||'').toLowerCase().includes(q) ||
       (r.job_number||'').toLowerCase().includes(q) ||
       (r.cardholder_name||'').toLowerCase().includes(q) ||
-      (r.submitted_by||'').toLowerCase().includes(q)
+      (r.submitted_by||'').toLowerCase().includes(q) ||
+      (qAmount && parseFloat(r.amount||0).toFixed(2).includes(qAmount))
     )
   );
   if (sort === 'date_desc') rows.sort((a,b) => new Date(b.expense_date) - new Date(a.expense_date));
@@ -2782,6 +2789,7 @@ function exportReceiptsCSV() {
   _rcptCategories.forEach(c => glByCat[c.category] = c.gl_account || '');
   const q = (document.getElementById('rcptlog-search').value || '').toLowerCase();
   const cat = document.getElementById('rcptlog-cat-filter').value;
+  const qAmount = q.replace(/[^0-9.]/g, '');
   let rows = _allReceipts.filter(r =>
     (!cat || r.category === cat) &&
     (!q ||
@@ -2789,7 +2797,8 @@ function exportReceiptsCSV() {
       (r.location_name||'').toLowerCase().includes(q) ||
       (r.job_number||'').toLowerCase().includes(q) ||
       (r.cardholder_name||'').toLowerCase().includes(q) ||
-      (r.submitted_by||'').toLowerCase().includes(q)
+      (r.submitted_by||'').toLowerCase().includes(q) ||
+      (qAmount && parseFloat(r.amount||0).toFixed(2).includes(qAmount))
     )
   );
   const headers = ['Date','Cardholder','Card Last 4','Vendor','Amount','Category','GL Account','Job Number','Location','Submitted By','No Receipt','Drop Shipment','Separate Company Statement','Split Ref','Notes','Photo/PDF URL(s)'];
@@ -3655,7 +3664,7 @@ async function deleteRecurringCharge(id) {
         <div class="photo-grid" id="rcpt-photo-grid">
           <div class="photo-thumb photo-add" onclick="document.getElementById('rcpt-photo-input').click()" style="font-size:28px;color:#aaa;">+</div>
         </div>
-        <input type="file" id="rcpt-photo-input" accept="image/*,application/pdf" capture="environment" multiple style="display:none;" onchange="handleReceiptPhotos(this)">
+        <input type="file" id="rcpt-photo-input" accept="image/*,application/pdf" multiple style="display:none;" onchange="handleReceiptPhotos(this)">
         <div style="font-size:11px;color:var(--text2);margin-top:6px;" id="rcpt-photo-status"></div>
         <div style="font-size:11px;color:var(--text2);margin-top:4px;">Downloaded an invoice instead of a paper receipt? You can attach the PDF directly here.</div>
       </div>
@@ -3694,7 +3703,7 @@ async function deleteRecurringCharge(id) {
     <div class="top-bar-logo">Kencal Pro</div>
   </div>
   <div style="padding:10px 16px;background:var(--white);border-bottom:0.5px solid var(--border);position:sticky;top:50px;z-index:9;display:flex;flex-direction:column;gap:8px;">
-    <input type="text" id="rcptlog-search" placeholder="🔍 Search vendor, job or cardholder…" oninput="filterReceiptsLog()" style="background:#F4F5F7;border:none;border-radius:10px;padding:9px 12px;font-size:13px;">
+    <input type="text" id="rcptlog-search" placeholder="🔍 Search vendor, job, cardholder or $ amount…" oninput="filterReceiptsLog()" style="background:#F4F5F7;border:none;border-radius:10px;padding:9px 12px;font-size:13px;">
     <div style="display:flex;gap:8px;">
       <select id="rcptlog-sort" onchange="filterReceiptsLog()" style="flex:1;font-size:13px;border-radius:8px;border:0.5px solid var(--border);padding:7px 10px;">
         <option value="date_desc">Newest first</option>
