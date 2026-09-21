@@ -322,6 +322,7 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
   </div>
   <div class="scroll-body">
     <div class="field-label">Select location to inspect</div>
+    <input type="text" id="qc-loc-search" placeholder="🔍 Search by location or job number…" oninput="filterQCLocations(this.value)" style="width:100%;box-sizing:border-box;background:#F4F5F7;border:none;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:10px;" autocomplete="off">
     <div id="qc-loc-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
   </div>
 </div>
@@ -444,7 +445,7 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
 <!-- QC: Report -->
 <div class="screen" id="s-qc-report">
   <div class="top-bar">
-    <button class="top-bar-back" onclick="showScreen('s-qc-summary')">‹</button>
+    <button class="top-bar-back" onclick="qcReportBack()">‹</button>
     <div class="top-bar-title">Inspection report</div>
     <div class="top-bar-logo">Kencal Pro</div>
   </div>
@@ -474,10 +475,17 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
         </div>
       </div>
     </div>
-    <div style="background:var(--attn-bg);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--attn);display:flex;gap:8px;">
-      <span style="font-size:16px;flex-shrink:0;">⚠</span>
-      <span>Pending approval before sending to client.</span>
-    </div>
+    <div id="qc-status-banner"></div>
+    <!-- Approve action — added 2026-09-21. Rick reported that reopening a
+         location with a pending inspection showed "pending_approval" with
+         no way to actually approve it (only the one notification email
+         fired at submit time). This marks the inspection approved
+         internally (status column only, no new schema) so it drops off the
+         pending list; getting the report to the client stays a manual
+         print/forward step, same as today — approving does not auto-email
+         anyone. Only shown to receipts_admin users (Rick/Mary/Keri), same
+         gate as Receipts Log, per Rick's answer when asked. -->
+    <button class="btn-primary" id="qc-approve-btn" style="display:none;" onclick="approveQCInspection()">✓ Approve inspection</button>
     <button class="btn-primary" onclick="printQCReport()">🖨 Print / Save as PDF</button>
     <button class="btn-secondary" onclick="showScreen('s-home')">Back to home</button>
   </div>
@@ -599,6 +607,8 @@ let state = {
   qcRooms: [],
   qcRoomData: {},
   qcPhotos: {},
+  _qcHistView: null,
+  _qcReportBackTarget: 's-qc-summary',
   qcTranscripts: {},
   qcVideoTranscripts: {},
   qcCurrentRoomIdx: 0,
@@ -949,7 +959,11 @@ async function submitQCInspection(){
     }
     if(state.qcInspectionId)
       await fetch(SUPABASE_URL+`/rest/v1/kencal_inspections?id=eq.${state.qcInspectionId}`,{method:'PATCH',headers:HEADERS,body:JSON.stringify({overall_score:state._qcOverallScore,status:'pending_approval'})});
-    buildQCReport();sendQCEmail();
+    state._qcHistView=null;
+    state._qcReportBackTarget='s-qc-summary';
+    buildQCReport();
+    renderQCStatusBanner('pending_approval');
+    sendQCEmail();
     showScreen('s-qc-report');
     toast('Submitted for approval ✓');
   } catch(e){toast('Error saving');btn.textContent='Generate report & submit';btn.disabled=false;}
@@ -988,13 +1002,19 @@ function buildQCReport(){
 // branded look as the Receipts PDF report). Reuses the exact same
 // print-container technique as generateReceiptsPdfReport(): build the
 // report as HTML into a normally-hidden container, add a body class that
-// the @media print rules use to hide everything else, then print. Scores
-// and issues are recomputed here (same logic as buildQCReport()) rather
-// than scraped from the on-screen DOM, so this stays correct even if the
-// on-screen report's markup changes later. Only usable right after
-// completing an inspection (same as the on-screen report) — there's no
-// history/reopen feature for past inspections yet.
+// the @media print rules use to hide everything else, then print.
+//
+// Extended 2026-09-21 (same day the Approve action was added) to also work
+// for a *reopened* past inspection, not just the one just submitted —
+// printQCReport() now branches on whether state._qcHistView is set and
+// gathers its data from the right place, then hands off to a single shared
+// renderer so both paths print identically.
 function printQCReport(){
+  const data = state._qcHistView ? buildQCPrintDataFromHistory(state._qcHistView) : buildQCPrintDataFromLive();
+  renderAndPrintQCReport(data);
+}
+
+function buildQCPrintDataFromLive(){
   const w={pass:1,attn:0.5,fail:0};
   let roomScoresRows='', issuesHtml='';
   state.qcRooms.forEach(room=>{
@@ -1015,30 +1035,73 @@ function printQCReport(){
         <div class="qc-print-photos">${state.qcPhotos[room].map(u=>`<img src="${u}">`).join('')}</div>
       </div>`).join('');
 
+  return {
+    locationName: state.qcLocation?.name||'—',
+    dateText: document.getElementById('rpt-date').textContent,
+    numberText: document.getElementById('rpt-number').textContent,
+    scoreText: document.getElementById('rpt-score').textContent,
+    gradeText: document.getElementById('rpt-grade').textContent,
+    roomScoresRows, issuesHtml, photosHtml,
+    historyNote: '',
+    inspectorText: document.getElementById('rpt-inspector').textContent,
+    signedAtText: document.getElementById('rpt-signed-at').textContent
+  };
+}
+
+// Photos are never persisted to the database (see the comment on
+// openQCHistoryReport()) — only room scores and flagged items survive.
+// Rather than silently print a report that's missing photos it once had,
+// this adds a visible note explaining why.
+function buildQCPrintDataFromHistory(h){
+  let roomScoresRows='', issuesHtml='';
+  h.rooms.forEach(r=>{
+    const score=r.room_score!=null?Math.round(r.room_score):null;
+    const color=score===null?'#999':score>=90?'#1D9E75':score>=75?'#C8942A':'#A32D2D';
+    roomScoresRows+=`<tr><td>${r.room_name}</td><td style="text-align:right;font-weight:700;color:${color};">${score!==null?score:'—'}</td></tr>`;
+  });
+  h.issues.forEach(iss=>{
+    issuesHtml+=`<div class="qc-print-issue"><div class="room">${iss.room}</div><div class="desc">${iss.desc}</div></div>`;
+  });
+  return {
+    locationName: h.locationName||'—',
+    dateText: h.dateStr,
+    numberText: h.numberStr,
+    scoreText: h.overallScore!=null?Math.round(h.overallScore):'—',
+    gradeText: h.grade,
+    roomScoresRows, issuesHtml,
+    photosHtml: '',
+    historyNote: 'Photos taken during this inspection aren\'t stored for later retrieval — they were included in the notification email sent when it was submitted. This reprinted report shows the saved scores and flagged items only.',
+    inspectorText: h.inspectorName||'—',
+    signedAtText: h.signedAtStr||''
+  };
+}
+
+function renderAndPrintQCReport(d){
   const html=`
     <div class="rprt-page">
       <div class="rprt-header">
         <div class="brand">KENCAL MAINTENANCE CORPORATION</div>
         <div class="title">Quality Inspection Report</div>
-        <div class="sub">${state.qcLocation?.name||'—'} · ${document.getElementById('rpt-date').textContent} · ${document.getElementById('rpt-number').textContent}</div>
+        <div class="sub">${d.locationName} · ${d.dateText} · ${d.numberText}</div>
       </div>
+      ${d.historyNote ? `<div class="rprt-section" style="background:#FCEBEB;"><div style="font-size:12px;color:#A32D2D;">⚠ ${d.historyNote}</div></div>` : ''}
       <div class="rprt-section">
         <div class="qc-print-score-wrap">
-          <div><div class="qc-print-score-num">${document.getElementById('rpt-score').textContent}</div><div style="font-size:11px;color:#999;">/ 100</div></div>
-          <div><div class="qc-print-score-grade">${document.getElementById('rpt-grade').textContent}</div><div style="font-size:11px;color:#999;">ISSA 612 standard</div></div>
+          <div><div class="qc-print-score-num">${d.scoreText}</div><div style="font-size:11px;color:#999;">/ 100</div></div>
+          <div><div class="qc-print-score-grade">${d.gradeText}</div><div style="font-size:11px;color:#999;">ISSA 612 standard</div></div>
         </div>
       </div>
       <div class="rprt-section">
         <h3>Room-by-Room Scores</h3>
-        <table class="rprt-table"><thead><tr><th>Room</th><th style="text-align:right;">Score</th></tr></thead><tbody>${roomScoresRows}</tbody></table>
+        <table class="rprt-table"><thead><tr><th>Room</th><th style="text-align:right;">Score</th></tr></thead><tbody>${d.roomScoresRows}</tbody></table>
       </div>
-      ${issuesHtml ? `<div class="rprt-section"><h3>Items Needing Attention</h3>${issuesHtml}</div>` : `<div class="rprt-section"><h3>Items Needing Attention</h3><div style="font-size:13px;color:#999;">No issues flagged — every rated item passed.</div></div>`}
-      ${photosHtml ? `<div class="rprt-section"><h3>Inspection Photos</h3>${photosHtml}</div>` : ''}
+      ${d.issuesHtml ? `<div class="rprt-section"><h3>Items Needing Attention</h3>${d.issuesHtml}</div>` : `<div class="rprt-section"><h3>Items Needing Attention</h3><div style="font-size:13px;color:#999;">No issues flagged — every rated item passed.</div></div>`}
+      ${d.photosHtml ? `<div class="rprt-section"><h3>Inspection Photos</h3>${d.photosHtml}</div>` : ''}
       <div class="rprt-section">
         <h3>Inspector Sign-Off</h3>
-        <div style="font-size:14px;font-weight:600;color:#1A1A1A;">${document.getElementById('rpt-inspector').textContent}</div>
+        <div style="font-size:14px;font-weight:600;color:#1A1A1A;">${d.inspectorText}</div>
         <div style="font-size:12px;color:#666;">Field Supervisor · Kencal Maintenance Corporation</div>
-        <div style="font-size:12px;color:#666;margin-top:2px;">${document.getElementById('rpt-signed-at').textContent}</div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">${d.signedAtText}</div>
       </div>
     </div>`;
 
@@ -1071,10 +1134,18 @@ function printQCReport(){
   });
 }
 
+// Full location list for the currently logged-in user is kept in memory so
+// the search box (added 2026-09-21, Rick asked for a way to find a location
+// without scrolling a long list) can filter instantly without re-querying
+// Supabase on every keystroke.
+let _qcAllLocs = [];
+
 async function loadQCLocations(){
   const list=document.getElementById('qc-loc-list');
   list.innerHTML='<div class="loading"><div class="spinner"></div>Loading…</div>';
   buildQCTemplateGrid();
+  const searchBox=document.getElementById('qc-loc-search');
+  if(searchBox)searchBox.value='';
   try {
     let locs;
     // kencal_locations has no "name" or "address" columns — its real
@@ -1087,16 +1158,33 @@ async function loadQCLocations(){
     } else {
       const locIds=await sbFetch(`kencal_supervisor_locations?supervisor_id=eq.${state.supervisor.id}&select=location_id`);
       const ids=locIds.map(l=>l.location_id).join(',');
-      if(!ids){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
+      if(!ids){_qcAllLocs=[];list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
       locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,display_name,job_number&order=display_name`);
     }
-    list.innerHTML=locs.map(l=>`
-      <div class="loc-row" onclick="selectQCLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${(l.job_number||'').replace(/'/g,"\\'")}')">
-        <div class="loc-icon">🏢</div>
-        <div style="flex:1;"><div style="font-size:15px;font-weight:600;">${l.display_name}</div><div style="font-size:12px;color:var(--text2);">${l.job_number?('Job '+l.job_number):'—'}</div></div>
-        <span style="font-size:20px;color:#ccc;">›</span>
-      </div>`).join('');
-  } catch(e){list.innerHTML='<p style="color:var(--fail);font-size:13px;padding:16px;">Error loading locations.</p>';}
+    _qcAllLocs=locs;
+    renderQCLocList(locs);
+  } catch(e){_qcAllLocs=[];list.innerHTML='<p style="color:var(--fail);font-size:13px;padding:16px;">Error loading locations.</p>';}
+}
+
+function renderQCLocList(locs){
+  const list=document.getElementById('qc-loc-list');
+  if(!locs.length){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations match your search.</p>';return;}
+  list.innerHTML=locs.map(l=>`
+    <div class="loc-row" onclick="selectQCLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${(l.job_number||'').replace(/'/g,"\\'")}')">
+      <div class="loc-icon">🏢</div>
+      <div style="flex:1;"><div style="font-size:15px;font-weight:600;">${l.display_name}</div><div style="font-size:12px;color:var(--text2);">${l.job_number?('Job '+l.job_number):'—'}</div></div>
+      <span style="font-size:20px;color:#ccc;">›</span>
+    </div>`).join('');
+}
+
+function filterQCLocations(query){
+  const q=(query||'').trim().toLowerCase();
+  if(!q){renderQCLocList(_qcAllLocs);return;}
+  const matches=_qcAllLocs.filter(l=>
+    (l.display_name||'').toLowerCase().includes(q) ||
+    (l.job_number||'').toLowerCase().includes(q)
+  );
+  renderQCLocList(matches);
 }
 
 async function selectQCLocation(id,name,address){
@@ -1104,7 +1192,7 @@ async function selectQCLocation(id,name,address){
   document.getElementById('qc-loc-title').textContent=name;
   showScreen('s-qc-location');
   try {
-    const inspections=await sbFetch(`kencal_inspections?location_id=eq.${id}&select=id,overall_score,status,created_at&order=created_at.desc&limit=10`);
+    const inspections=await sbFetch(`kencal_inspections?location_id=eq.${id}&select=id,overall_score,status,created_at,report_number&order=created_at.desc&limit=10`);
     const lastScore=inspections.length?inspections[0].overall_score:null;
     const prevScore=inspections.length>1?inspections[1].overall_score:null;
     const trend=(lastScore&&prevScore)?Math.round(lastScore-prevScore):null;
@@ -1120,12 +1208,128 @@ async function selectQCLocation(id,name,address){
       const bg=i.overall_score>=90?'var(--pass-bg)':i.overall_score>=75?'var(--attn-bg)':'var(--fail-bg)';
       const tc=i.overall_score>=90?'var(--pass)':i.overall_score>=75?'var(--attn)':'var(--fail)';
       const d=new Date(i.created_at);
-      return `<div class="hist-row"><div class="hist-score" style="background:${bg};color:${tc};">${score}</div>
+      return `<div class="hist-row" style="cursor:pointer;" onclick="openQCHistoryReport(${i.id})"><div class="hist-score" style="background:${bg};color:${tc};">${score}</div>
         <div style="flex:1;"><div style="font-size:14px;font-weight:600;">${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
         <div style="font-size:12px;color:var(--text2);">${i.status}</div></div>
-        <span class="badge ${i.status==='sent'?'badge-green':'badge-gray'}">${i.status}</span></div>`;
+        <span class="badge ${i.status==='approved'?'badge-green':i.status==='sent'?'badge-green':'badge-gray'}">${i.status}</span>
+        <span style="font-size:18px;color:#ccc;margin-left:6px;">›</span></div>`;
     }).join('');
   } catch(e){}
+}
+
+// Reopen a past inspection's report — added 2026-09-21 alongside the
+// Approve action. Room scores and flagged items were always being saved
+// (kencal_inspection_rooms / kencal_inspection_items), just never read back
+// after the session that created them; this rebuilds the on-screen report
+// from those saved rows. NOTE: photos are NOT persisted anywhere in the
+// database today — they only ever lived in the browser's in-memory state
+// during the live session and were embedded straight into the one
+// notification email sent at submit time. A reopened report can't show
+// them; a small red note is added to the report explaining that instead of
+// silently omitting them, so it doesn't look like they went missing.
+async function openQCHistoryReport(inspectionId){
+  try {
+    const rows=await sbFetch(`kencal_inspections?id=eq.${inspectionId}&select=id,overall_score,status,created_at,report_number,supervisor_id`);
+    const insp=rows[0];
+    if(!insp){toast('Could not load that inspection');return;}
+    let inspectorName='—';
+    if(insp.supervisor_id){
+      const sup=await sbFetch(`kencal_supervisors?id=eq.${insp.supervisor_id}&select=name`);
+      if(sup[0])inspectorName=sup[0].name;
+    }
+    const rooms=await sbFetch(`kencal_inspection_rooms?inspection_id=eq.${inspectionId}&select=id,room_name,room_score,sort_order&order=sort_order`);
+    const roomIds=rooms.map(r=>r.id).join(',');
+    const items=roomIds?await sbFetch(`kencal_inspection_items?inspection_room_id=in.(${roomIds})&select=inspection_room_id,checklist_item,rating,notes`):[];
+    const issues=[];
+    rooms.forEach(r=>{
+      items.filter(it=>it.inspection_room_id===r.id&&(it.rating==='attn'||it.rating==='fail'))
+        .forEach(it=>issues.push({room:r.room_name,desc:`${it.checklist_item||''}${it.notes?': '+it.notes:'.'}`}));
+    });
+    const now=new Date(insp.created_at);
+    const score=insp.overall_score||0;
+    const grade=score>=95?'Excellent':score>=85?'Good standing':score>=75?'Needs attention':'Below standard';
+    state._qcHistView={
+      id:insp.id, status:insp.status, rooms, issues,
+      overallScore:insp.overall_score, grade,
+      dateStr:now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+      numberStr:insp.report_number||('QC-'+now.getFullYear()),
+      locationName:state.qcLocation?.name||'—',
+      inspectorName,
+      signedAtStr:now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' · '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
+    };
+    renderQCReportScreenFromHistory(state._qcHistView);
+    state._qcReportBackTarget='s-qc-location';
+    showScreen('s-qc-report');
+  } catch(e){ toast('Error loading that inspection'); }
+}
+
+function renderQCReportScreenFromHistory(h){
+  document.getElementById('rpt-date').textContent=h.dateStr;
+  document.getElementById('rpt-number').textContent=h.numberStr;
+  document.getElementById('rpt-location').textContent=h.locationName;
+  document.getElementById('rpt-score').textContent=h.overallScore!=null?Math.round(h.overallScore):'—';
+  document.getElementById('rpt-score-bar').style.width=(h.overallScore||0)+'%';
+  document.getElementById('rpt-grade').textContent=h.grade;
+  let roomScoresHtml='';
+  h.rooms.forEach(r=>{
+    const s=r.room_score!=null?Math.round(r.room_score):null;
+    const bc=s>=90?'badge-green':s>=75?'badge-amber':'badge-red';
+    roomScoresHtml+=`<div class="report-room-row"><span>${r.room_name}</span><span class="badge ${bc}">${s!==null?s:'—'}</span></div>`;
+  });
+  document.getElementById('rpt-room-scores').innerHTML=roomScoresHtml;
+  const issuesHtml=h.issues.map(iss=>`<div class="issue-item"><div class="issue-room">${iss.room}</div><div class="issue-desc">${iss.desc}</div></div>`).join('');
+  document.getElementById('rpt-issues').innerHTML=issuesHtml||'<p style="font-size:13px;color:var(--text2);">No issues flagged.</p>';
+  document.getElementById('rpt-issues-section').style.display='';
+  document.getElementById('rpt-inspector').textContent=h.inspectorName;
+  document.getElementById('rpt-signed-at').textContent=h.signedAtStr;
+  renderQCStatusBanner(h.status);
+}
+
+// Shared by both the live post-submit flow and the reopened-history flow —
+// keeps the banner/Approve-button state in sync with the actual `status`
+// column instead of the static "always pending" text this screen used to
+// have.
+function renderQCStatusBanner(status){
+  const banner=document.getElementById('qc-status-banner');
+  const approveBtn=document.getElementById('qc-approve-btn');
+  if(!banner||!approveBtn)return;
+  if(status==='approved'){
+    banner.innerHTML='<div style="background:var(--pass-bg);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--pass);display:flex;gap:8px;"><span style="font-size:16px;flex-shrink:0;">✓</span><span>Approved.</span></div>';
+    approveBtn.style.display='none';
+    approveBtn.disabled=false;approveBtn.textContent='✓ Approve inspection';
+  } else {
+    banner.innerHTML='<div style="background:var(--attn-bg);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--attn);display:flex;gap:8px;"><span style="font-size:16px;flex-shrink:0;">⚠</span><span>Pending approval before sending to client.</span></div>';
+    approveBtn.style.display=state.supervisor&&state.supervisor.receipts_admin?'block':'none';
+    approveBtn.disabled=false;approveBtn.textContent='✓ Approve inspection';
+  }
+}
+
+// Marks the inspection approved (status column only — see the comment on
+// the Approve button in the markup for the scope decision behind this).
+async function approveQCInspection(){
+  const id=state._qcHistView?state._qcHistView.id:state.qcInspectionId;
+  if(!id){toast('Nothing to approve');return;}
+  const btn=document.getElementById('qc-approve-btn');
+  btn.disabled=true;btn.textContent='Approving…';
+  try {
+    const res=await fetch(SUPABASE_URL+`/rest/v1/kencal_inspections?id=eq.${id}`,{method:'PATCH',headers:HEADERS,body:JSON.stringify({status:'approved'})});
+    if(!res.ok) throw new Error('failed');
+    if(state._qcHistView)state._qcHistView.status='approved';
+    renderQCStatusBanner('approved');
+    toast('Inspection approved ✓');
+  } catch(e){
+    toast('Error approving — try again');
+    btn.disabled=false;btn.textContent='✓ Approve inspection';
+  }
+}
+
+function qcReportBack(){
+  const target=state._qcReportBackTarget||'s-qc-summary';
+  if(target==='s-qc-location'&&state.qcLocation){
+    selectQCLocation(state.qcLocation.id,state.qcLocation.name,state.qcLocation.address);
+  } else {
+    showScreen(target);
+  }
 }
 
 // ── MEDIA ──────────────────────────────────────────────
