@@ -910,6 +910,21 @@ function buildQCSummary(){
   document.getElementById('qc-summary-grade').innerHTML=`<span class="badge ${gc}">${grade}</span>`;
   document.getElementById('qc-rooms-done').textContent=`${count} / ${state.qcRooms.length}`;
   document.getElementById('qc-issues-count').textContent=issues;
+  // Bug fix (2026-09-21): submitQCInspection() sets this button to
+  // "Saving…"/disabled and only ever resets it back on FAILURE (the
+  // catch block below) — on success it just navigates away to the
+  // report screen and leaves the button in that state. Since this is
+  // one static button element reused for every inspection (not
+  // recreated per-inspection), the very next inspection that reaches
+  // this summary screen — even a brand new one — found the submit
+  // button permanently stuck reading "Saving…" and disabled, with no
+  // way to recover short of reloading the page. buildQCSummary() runs
+  // every time this screen is (re)built, so resetting the button here
+  // guarantees a fresh, clickable state regardless of how the screen
+  // was reached or how many prior inspections succeeded.
+  const submitBtn=document.getElementById('qc-btn-submit');
+  submitBtn.textContent='Generate report & submit';
+  submitBtn.disabled=false;
 }
 
 async function submitQCInspection(){
@@ -1491,10 +1506,36 @@ async function sendQCEmail() {
     });
   });
 
+  // Add QC photos if present. Built before the footer is inlined below,
+  // and the footer's HTML is computed exactly once into `footerHtml` —
+  // previously this called emailFooter() a second time as the search
+  // string for the .replace() below. emailFooter() embeds the current
+  // time to the minute, so the two calls only matched when they happened
+  // to land in the same minute; straddling a minute boundary made the
+  // .replace() silently find no match and the photos section would never
+  // get inserted at all, even for a successfully uploaded photo. Rare in
+  // practice, but a real latent bug found while chasing the "photo shows
+  // as taken but never appears in the email/report" report — most likely
+  // that report is still the kencal-inspection-photos storage bucket/
+  // policy from Section 9.15, but this is a second, independent way the
+  // same symptom could happen, so it's fixed too.
+  let qcPhotoHtml = '';
+  const allPhotos = Object.values(state.qcPhotos || {}).flat().filter(Boolean);
+  if (allPhotos.length) {
+    qcPhotoHtml = `
+      <div style="padding:16px 32px 24px;background:#ffffff;border-top:1px solid #F0F0F0;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:700;color:#1B2A4A;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">📷 Inspection Photos</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          ${allPhotos.map(url => `<img src="${url}" style="width:180px;height:180px;object-fit:cover;border-radius:8px;border:1px solid #E0E0E0;" />`).join('')}
+        </div>
+      </div>`;
+  }
+
+  const footerHtml = emailFooter();
   const html = `
     <div style="max-width:600px;margin:0 auto;border:1px solid #E0E0E0;border-radius:8px;overflow:hidden;">
       ${emailHeader('QC Inspection Report', `${loc?.name || '—'} · ${dateLabel}`)}
-      
+
       <div style="background:#1B2A4A;padding:0 32px 24px;">
         <div style="display:inline-block;background:${scoreBg};border-radius:12px;padding:16px 24px;text-align:center;min-width:120px;">
           <div style="font-size:48px;font-weight:700;color:${scoreColor};line-height:1;">${score}</div>
@@ -1520,24 +1561,11 @@ async function sendQCEmail() {
           <div style="font-size:12px;color:#666;">Field Supervisor · Kencal Maintenance Corporation</div>
         </div>
       </div>
-      ${emailFooter()}
+      ${qcPhotoHtml}
+      ${footerHtml}
     </div>`;
 
-  // Add QC photos if present
-  let qcPhotoHtml = '';
-  const allPhotos = Object.values(state.qcPhotos || {}).flat().filter(Boolean);
-  if (allPhotos.length) {
-    qcPhotoHtml = `
-      <div style="padding:16px 32px 24px;background:#ffffff;border-top:1px solid #F0F0F0;">
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:700;color:#1B2A4A;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">📷 Inspection Photos</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          ${allPhotos.map(url => `<img src="${url}" style="width:180px;height:180px;object-fit:cover;border-radius:8px;border:1px solid #E0E0E0;" />`).join('')}
-        </div>
-      </div>`;
-  }
-
-  const htmlWithPhotos = html.replace(emailFooter(), qcPhotoHtml + emailFooter());
-  const sent = await sendEmail(subject, htmlWithPhotos);
+  const sent = await sendEmail(subject, html);
   if (sent) console.log('QC email sent');
   return sent;
 }
