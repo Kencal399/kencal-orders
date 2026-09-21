@@ -1139,9 +1139,24 @@ async function handleQCPhoto(input){
     state.qcPhotos[room].push(publicUrl);
     toast('Photo uploaded ✓');
   } catch(e) {
-    const room=state.qcRooms[state.qcCurrentRoomIdx];
-    state.qcPhotos[room].push(previewUrl);
-    toast('Photo saved locally');
+    // Bug fix (2026-09-21): this used to silently fall back to pushing the
+    // browser's local blob: preview URL into state.qcPhotos, showing a
+    // reassuring "Photo saved locally" toast — but a blob: URL only exists
+    // inside this one browser tab. It renders fine in the thumbnail grid
+    // (so the inspection looked complete) but is completely unreachable
+    // from the emailed report or the printable report added in 9.14,
+    // which is exactly why photos "showed as taken" but never appeared in
+    // Rick's email. Root cause is almost certainly the same as the two
+    // prior storage-bucket bugs (kencal-receipt-photos, site-walk-photos):
+    // kencal-inspection-photos either doesn't exist yet or exists without
+    // a write policy for the app's anon key — see
+    // qc_inspection_photos_storage_policy.sql. Until that's confirmed
+    // fixed, failed uploads are now surfaced honestly instead of faked:
+    // the local preview thumbnail is removed and the room's photo count
+    // does not include it, so nothing points to a photo that only exists
+    // in this tab.
+    t.remove();
+    toast('❌ Photo failed to upload — check connection and try again');
   }
 }
 
