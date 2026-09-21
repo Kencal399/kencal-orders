@@ -157,6 +157,45 @@ textarea { min-height: 80px; resize: vertical; }
   body { background: #fff; }
   .view-section { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
 }
+
+/* ── Branded printable reports (2026-09-21) ──────────────────────────
+   Rick asked for a polished, client-ready report — same navy/gold Kencal
+   branding as K Pro's Receipts PDF report and QC Inspector print report
+   (kencalpro.html's .rprt-* classes), rather than this tool's plain
+   view-section print. Two versions: a client-safe building/site summary
+   (no pricing or internal risk data) and an internal-only estimating
+   report with everything, including complexity score, price tier,
+   staffing risk, and labor/burden rate — split per Rick's explicit call
+   that those numbers should never go to a client. Reuses the exact same
+   print-container + body-class technique as the Receipts report so
+   printing is reliable across browsers (see cleanup logic in the JS). */
+#sw-print-container { display: none; }
+.rprt-page{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1A1A1A;max-width:900px;margin:0 auto;}
+.rprt-header{background:#1B2A4A;color:#fff;padding:22px 28px;border-radius:8px 8px 0 0;}
+.rprt-header .brand{font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#C8942A;margin-bottom:4px;}
+.rprt-header .title{font-size:22px;font-weight:700;}
+.rprt-header .sub{font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px;}
+.rprt-section{margin:18px 0;}
+.rprt-section h3{font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:#1B2A4A;border-bottom:2px solid #C8942A;padding-bottom:4px;margin-bottom:10px;}
+.rprt-table{width:100%;border-collapse:collapse;font-size:12px;}
+.rprt-table th{background:#F4F5F7;text-align:left;padding:6px 8px;border-bottom:1px solid #ccc;font-weight:700;}
+.rprt-table td{padding:6px 8px;border-bottom:0.5px solid #E0E0E0;}
+.rprt-zone{border:1px solid #E0E0E0;border-radius:8px;margin-bottom:8px;padding:10px 12px;page-break-inside:avoid;}
+.rprt-zone .name{font-weight:700;color:#1B2A4A;font-size:13px;margin-bottom:3px;}
+.rprt-zone .detail{font-size:12px;color:#555;line-height:1.5;}
+.rprt-photos{display:flex;gap:8px;flex-wrap:wrap;}
+.rprt-photos img{width:130px;height:130px;object-fit:cover;border-radius:8px;border:1px solid #ccc;}
+.rprt-banner{padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:14px;}
+.rprt-banner.internal{background:#FBEAEA;color:#A32D2D;}
+@page { margin: 0.25in; }
+@media print {
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+  body.printing-sw-report > *:not(#sw-print-container){display:none !important;}
+  body.printing-sw-report #sw-print-container{display:block !important;}
+  body.printing-sw-report{margin:0 !important;}
+  .rprt-page{max-width:100% !important;}
+  .rprt-zone{break-inside:avoid;}
+}
 </style>
 </head>
 <body>
@@ -401,11 +440,13 @@ textarea { min-height: 80px; resize: vertical; }
 <!-- View Mode -->
 <div id="viewMode">
   <button class="back-btn" onclick="showLanding()">← Back</button>
-  <button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+  <button class="print-btn" onclick="printClientSummary()">🖨 Print client summary</button>
+  <button class="print-btn" onclick="printInternalEstimate()">🖨 Print internal estimate</button>
   <div id="viewContent"></div>
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="sw-print-container"></div>
 
 <script>
 const SUPABASE_URL = 'https://cnayujuvmzvfqnxfutpi.supabase.co';
@@ -414,6 +455,10 @@ const HEADERS = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'A
 
 var photos = [], zoneCount = 0;
 var floorTypesList = ['carpet','hardwood','tile','vct','concrete','marble','mixed'];
+// Set by K Pro's Site Walk tile (?rep=Name) when this page is opened from
+// inside K Pro, so the rep doesn't have to retype their own name. Falls
+// back to blank/editable when opened directly (no K Pro login involved).
+const PRESET_REP = new URLSearchParams(location.search).get('rep') || '';
 
 // ── Nav ──────────────────────────────────────────────
 function showLanding() {
@@ -463,11 +508,17 @@ async function loadWalks() {
   } catch(e) { el.innerHTML = '<div class="loading-msg">Could not load previous walk-throughs.</div>'; }
 }
 
+// Set by loadWalk() whenever a past walk is opened, so the print
+// functions below (added 2026-09-21) have the full row to work from
+// without re-fetching or re-scraping it from the view-mode DOM.
+var currentViewWalk = null;
+
 async function loadWalk(id) {
   try {
     const res = await fetch(SUPABASE_URL + '/rest/v1/site_walks?id=eq.' + id, { headers: HEADERS });
     const data = await res.json();
     if (!data.length) return;
+    currentViewWalk = data[0];
     renderView(data[0]);
     showView();
   } catch(e) { showToast('Could not load walk-through.', 'error'); }
@@ -536,6 +587,143 @@ function viewSection(title, rows) {
   return '<div class="view-section"><div class="view-section-title">' + title + '</div>' +
     filtered.map(function(r) { return '<div class="view-row"><span class="view-key">' + r[0] + '</span><span class="view-val">' + r[1] + '</span></div>'; }).join('') +
     '</div>';
+}
+
+// ── Branded printable reports (2026-09-21) ────────────────────────
+// Two versions built from the same saved walk row: a client-safe
+// building/site summary, and an internal-only estimating report that
+// adds complexity score, price tier, staffing risk, and labor/burden
+// rate — data Rick was clear should never go to a client. Both reuse
+// the .rprt-* classes (same look as K Pro's Receipts/QC reports) and
+// the same print-container + afterprint-cleanup mechanism, so printing
+// is reliable the same way across browsers.
+var SEC_LABELS = ['Open access', 'Key / fob required', 'Escorted / high security'];
+var TRAV_LABELS = ['Local (no tolls)', 'Minor tolls / bridges', 'Significant tolls / distance'];
+var RSPROD_LABELS = { excluded: 'Not included', included: 'Included in contract', billback: 'Bill-back separately' };
+
+function rprtRows(rows) {
+  var filtered = rows.filter(function(r){ return r[1] !== null && r[1] !== undefined && r[1] !== '' && r[1] !== 0; });
+  if (!filtered.length) return '';
+  return '<table class="rprt-table"><tbody>' +
+    filtered.map(function(r){ return '<tr><td style="color:#666;">' + r[0] + '</td><td style="text-align:right;font-weight:600;">' + r[1] + '</td></tr>'; }).join('') +
+    '</tbody></table>';
+}
+
+function rprtZonesHtml(zones) {
+  if (!zones || !zones.length) return '';
+  return zones.map(function(z) {
+    var bits = [];
+    if (z.sqft) bits.push(z.sqft.toLocaleString() + ' sq ft');
+    if (z.rooms) bits.push(z.rooms + ' rooms');
+    if (z.floorTypes && z.floorTypes.length) bits.push('Floor types: ' + z.floorTypes.join(', '));
+    return '<div class="rprt-zone"><div class="name">' + (z.name || 'Unnamed zone') + '</div><div class="detail">' + bits.join(' · ') + (z.notes ? '<br>' + z.notes : '') + '</div></div>';
+  }).join('');
+}
+
+function rprtPhotosHtml(urls) {
+  if (!urls || !urls.length) return '';
+  return '<div class="rprt-photos">' + urls.map(function(u){ return '<img src="' + u + '">'; }).join('') + '</div>';
+}
+
+// Shared building/site-facts sections used by both report versions.
+function rprtCommonSections(w) {
+  var html = '';
+  html += '<div class="rprt-section"><h3>Site information</h3>' + rprtRows([
+    ['Customer', w.customer], ['Address', w.address], ['Walk date', w.walk_date],
+    ['Rep', w.rep], ['Vertical', w.vertical], ['Incumbent', w.incumbent]
+  ]) + '</div>';
+  var zonesHtml = rprtZonesHtml(w.zones);
+  if (zonesHtml) html += '<div class="rprt-section"><h3>Floor zones' + (w.total_sqft ? ' — ' + w.total_sqft.toLocaleString() + ' sq ft total' : '') + '</h3>' + zonesHtml + '</div>';
+  var bkRows = rprtRows([
+    ['Full bathrooms', w.full_baths], ['Half baths', w.half_baths], ['Locker rooms', w.lockers],
+    ['Full kitchens', w.full_kitchens], ['Kitchenettes', w.kitchenettes], ['Cafeteria', w.cafeterias]
+  ]);
+  if (bkRows) html += '<div class="rprt-section"><h3>Bathrooms &amp; kitchens</h3>' + bkRows + '</div>';
+  html += '<div class="rprt-section"><h3>Service scope</h3>' + rprtRows([
+    ['Services', w.services && w.services.length ? w.services.join(', ') : null],
+    ['Schedule', w.schedule], ['Frequency', w.frequency],
+    ['Site access', w.security !== null && w.security !== undefined ? SEC_LABELS[w.security] : null],
+    ['Travel / logistics', w.travel !== null && w.travel !== undefined ? TRAV_LABELS[w.travel] : null],
+    ['Special conditions', w.special_conditions && w.special_conditions.length ? w.special_conditions.join(', ') : null]
+  ]) + '</div>';
+  if (w.vertical_details && Object.keys(w.vertical_details).length) {
+    var cfg = w.vertical && typeof INDUSTRY_CONFIGS !== 'undefined' && INDUSTRY_CONFIGS[w.vertical] ? INDUSTRY_CONFIGS[w.vertical] : null;
+    var rows = Object.entries(w.vertical_details).map(function(e) {
+      var label = e[0];
+      if (cfg) { var f = cfg.fields.find(function(ff){return ff.id===e[0];}); if (f) label = f.label; }
+      var val = Array.isArray(e[1]) ? e[1].join(', ') : e[1];
+      return [label, val];
+    });
+    var vertRows = rprtRows(rows);
+    if (vertRows) html += '<div class="rprt-section"><h3>' + (cfg ? cfg.title : 'Industry details') + '</h3>' + vertRows + '</div>';
+  }
+  if (w.notes) html += '<div class="rprt-section"><h3>Notes</h3><div style="font-size:13px;line-height:1.7;">' + w.notes + '</div></div>';
+  var photosHtml = rprtPhotosHtml(w.photo_urls);
+  if (photosHtml) html += '<div class="rprt-section"><h3>Site photos (' + w.photo_urls.length + ')</h3>' + photosHtml + '</div>';
+  return html;
+}
+
+function printBrandedReport(html) {
+  var container = document.getElementById('sw-print-container');
+  container.innerHTML = html;
+  document.body.classList.add('printing-sw-report');
+
+  var cleanedUp = false;
+  function cleanup() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    document.body.classList.remove('printing-sw-report');
+    window.removeEventListener('afterprint', cleanup);
+  }
+  window.addEventListener('afterprint', cleanup);
+
+  var pendingImages = Array.from(container.querySelectorAll('img')).filter(function(img){ return !img.complete; });
+  var imagesReady = pendingImages.length
+    ? Promise.race([
+        Promise.all(pendingImages.map(function(img){ return new Promise(function(res){ img.onload = img.onerror = res; }); })),
+        new Promise(function(res){ setTimeout(res, 3000); })
+      ])
+    : Promise.resolve();
+
+  imagesReady.then(function() {
+    setTimeout(function() {
+      window.print();
+      setTimeout(cleanup, 5000);
+    }, 150);
+  });
+}
+
+function printClientSummary() {
+  var w = currentViewWalk;
+  if (!w) { showToast('Open a saved walk-through first.', 'error'); return; }
+  var html = '<div class="rprt-page">' +
+    '<div class="rprt-header"><div class="brand">KENCAL MAINTENANCE CORPORATION</div><div class="title">Site Walk Summary</div>' +
+    '<div class="sub">' + (w.customer || 'Prospective site') + (w.walk_date ? ' · ' + w.walk_date : '') + '</div></div>' +
+    rprtCommonSections(w) +
+    '</div>';
+  printBrandedReport(html);
+}
+
+function printInternalEstimate() {
+  var w = currentViewWalk;
+  if (!w) { showToast('Open a saved walk-through first.', 'error'); return; }
+  var pricingRows = rprtRows([
+    ['Complexity score', w.complexity_score], ['Price tier', w.price_tier],
+    ['Staffing risk', w.staffing_risk], ['Geographic zone', w.geo_zone],
+    ['Estimated annual value', w.estimated_value ? '$' + parseInt(w.estimated_value).toLocaleString() : null],
+    ['Contract start', w.contract_start],
+    ['Hourly labor rate', w.labor_rate ? '$' + w.labor_rate.toFixed(2) + '/hr' : null],
+    ['Labor burden rate', w.burden_rate ? w.burden_rate + '%' : null],
+    ['Restroom products', w.restroom_products ? RSPROD_LABELS[w.restroom_products] || w.restroom_products : null]
+  ]);
+  var html = '<div class="rprt-page">' +
+    '<div class="rprt-header"><div class="brand">KENCAL MAINTENANCE CORPORATION</div><div class="title">Site Walk — Internal Estimate</div>' +
+    '<div class="sub">' + (w.customer || 'Prospective site') + (w.walk_date ? ' · ' + w.walk_date : '') + '</div></div>' +
+    '<div class="rprt-section"><div class="rprt-banner internal">⚠ Internal use only — contains pricing, complexity, and staffing data. Do not send to the client.</div></div>' +
+    rprtCommonSections(w) +
+    (pricingRows ? '<div class="rprt-section"><h3>Pricing &amp; complexity</h3>' + pricingRows + '</div>' : '') +
+    '</div>';
+  printBrandedReport(html);
 }
 
 // ── Zone management ──────────────────────────────────
@@ -1006,19 +1194,28 @@ function renderPhotos() {
 function removePhoto(i) { photos.splice(i,1); renderPhotos(); }
 
 async function uploadPhotos() {
-  var urls = [];
+  // Previously a failed upload (e.g. the storage bucket existing but
+  // missing a write policy — the exact bug found and fixed for receipt
+  // photos in the Receipts module) was silently dropped: the loop just
+  // moved on, and the walk still submitted successfully with fewer photos
+  // than were actually attached, no warning given. Now failures are
+  // counted and returned so submitForm() can tell the person.
+  var urls = [], failed = 0;
   for (var i = 0; i < photos.length; i++) {
     var p = photos[i];
     var ext = p.file.name.split('.').pop();
     var path = 'walks/' + Date.now() + '_' + i + '.' + ext;
-    var res = await fetch(SUPABASE_URL + '/storage/v1/object/site-walk-photos/' + path, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': p.file.type },
-      body: p.file
-    });
-    if (res.ok) urls.push(SUPABASE_URL + '/storage/v1/object/public/site-walk-photos/' + path);
+    try {
+      var res = await fetch(SUPABASE_URL + '/storage/v1/object/site-walk-photos/' + path, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': p.file.type },
+        body: p.file
+      });
+      if (res.ok) urls.push(SUPABASE_URL + '/storage/v1/object/public/site-walk-photos/' + path);
+      else failed++;
+    } catch (e) { failed++; }
   }
-  return urls;
+  return { urls: urls, failed: failed };
 }
 
 // ── Submit ───────────────────────────────────────────
@@ -1029,8 +1226,12 @@ async function submitForm() {
   var btn = document.getElementById('submitBtn');
   btn.disabled = true; btn.textContent = 'Uploading photos...';
 
-  var photoUrls = [];
-  if (photos.length) { photoUrls = await uploadPhotos(); }
+  var photoUrls = [], photosFailed = 0;
+  if (photos.length) {
+    var uploadResult = await uploadPhotos();
+    photoUrls = uploadResult.urls;
+    photosFailed = uploadResult.failed;
+  }
 
   btn.textContent = 'Saving...';
 
@@ -1092,8 +1293,13 @@ async function submitForm() {
       body: JSON.stringify(payload)
     });
     if (res.ok) {
-      showToast('Site walk submitted successfully!', 'success');
-      setTimeout(() => showLanding(), 1500);
+      if (photosFailed > 0) {
+        showToast('Saved, but ' + photosFailed + ' photo' + (photosFailed > 1 ? 's' : '') + ' failed to upload — everything else was saved.', 'error');
+        setTimeout(() => showLanding(), 2500);
+      } else {
+        showToast('Site walk submitted successfully!', 'success');
+        setTimeout(() => showLanding(), 1500);
+      }
     } else {
       var err = await res.json();
       showToast('Error: ' + (err.message || 'Could not save.'), 'error');
@@ -1107,7 +1313,11 @@ async function submitForm() {
 
 // ── Helpers ──────────────────────────────────────────
 function resetForm() {
-  ['cust','addr','rep','inc','notes','estval'].forEach(id => document.getElementById(id).value = '');
+  ['cust','addr','inc','notes','estval'].forEach(id => document.getElementById(id).value = '');
+  // 'rep' is prefilled from ?rep= (passed by K Pro's Site Walk tile with
+  // the logged-in person's name) rather than blanked like the other
+  // fields — still fully editable, e.g. logging a walk for someone else.
+  document.getElementById('rep').value = PRESET_REP;
   ['wdate','start'].forEach(id => document.getElementById(id).value = '');
   ['vert','sched','freq'].forEach(id => document.getElementById(id).selectedIndex = 0);
   document.querySelectorAll('.pill.on').forEach(p => p.classList.remove('on'));
