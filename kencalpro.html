@@ -513,7 +513,7 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
   <div class="scroll-body">
     <div class="step-pill">Step 3 — Building details</div>
     <div id="walk-rooms-content"></div>
-    <button class="btn-primary" onclick="submitWalk()">Submit to estimating queue →</button>
+    <button class="btn-primary" id="walk-submit-btn" onclick="submitWalk()">Submit to estimating queue →</button>
   </div>
 </div>
 
@@ -983,18 +983,23 @@ async function loadQCLocations(){
   buildQCTemplateGrid();
   try {
     let locs;
+    // kencal_locations has no "name" or "address" columns — its real
+    // columns are display_name and job_number (same as every other tile:
+    // Work Orders, Receipts, Supply Orders). This previously queried
+    // name/address, which don't exist, so every request 400'd and always
+    // landed in the catch block below ("Error loading locations.").
     if(state.supervisor.role==='admin'||state.supervisor.role==='manager'){
-      locs=await sbFetch('kencal_locations?active=eq.true&select=id,name,address&order=name');
+      locs=await sbFetch('kencal_locations?active=eq.true&select=id,display_name,job_number&order=display_name');
     } else {
       const locIds=await sbFetch(`kencal_supervisor_locations?supervisor_id=eq.${state.supervisor.id}&select=location_id`);
       const ids=locIds.map(l=>l.location_id).join(',');
       if(!ids){list.innerHTML='<p style="color:var(--text2);font-size:14px;padding:16px;">No locations assigned.</p>';return;}
-      locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,name,address&order=name`);
+      locs=await sbFetch(`kencal_locations?id=in.(${ids})&active=eq.true&select=id,display_name,job_number&order=display_name`);
     }
     list.innerHTML=locs.map(l=>`
-      <div class="loc-row" onclick="selectQCLocation(${l.id},'${(l.name||'').replace(/'/g,"\\'")}','${(l.address||'').replace(/'/g,"\\'")}')">
+      <div class="loc-row" onclick="selectQCLocation(${l.id},'${(l.display_name||'').replace(/'/g,"\\'")}','${(l.job_number||'').replace(/'/g,"\\'")}')">
         <div class="loc-icon">🏢</div>
-        <div style="flex:1;"><div style="font-size:15px;font-weight:600;">${l.name}</div><div style="font-size:12px;color:var(--text2);">${l.address||'—'}</div></div>
+        <div style="flex:1;"><div style="font-size:15px;font-weight:600;">${l.display_name}</div><div style="font-size:12px;color:var(--text2);">${l.job_number?('Job '+l.job_number):'—'}</div></div>
         <span style="font-size:20px;color:#ccc;">›</span>
       </div>`).join('');
   } catch(e){list.innerHTML='<p style="color:var(--fail);font-size:13px;padding:16px;">Error loading locations.</p>';}
@@ -1188,12 +1193,30 @@ function fakeGPS(){document.getElementById('walk-addr').value='Address auto-dete
 async function submitWalk(){
   const sqft=document.getElementById('wf-sqft')?.value||0;
   const client=document.getElementById('walk-client')?.value||'Unknown';
+  const btn=document.getElementById('walk-submit-btn');
+  if(btn){btn.disabled=true;btn.textContent='Submitting…';}
   try {
-    await fetch(SUPABASE_URL+'/rest/v1/site_walks',{method:'POST',headers:HEADERS,
+    // Previously this fetch's response was never checked (not even assigned
+    // to a variable), so a failed insert — bad column, RLS, network hiccup —
+    // still showed "Walk submitted ✓" and returned to Home. That let a
+    // submission silently vanish with no error and no way to know it never
+    // saved. Now a non-2xx response surfaces a real error and keeps the
+    // rep on this screen so nothing is lost.
+    const res=await fetch(SUPABASE_URL+'/rest/v1/site_walks',{method:'POST',headers:{...HEADERS,'Prefer':'return=minimal'},
       body:JSON.stringify({supervisor_id:state.supervisor.id,vertical:state.walkVert,total_sqft:parseInt(sqft)||0,status:'submitted',notes:client,created_at:new Date().toISOString()})});
+    if(!res.ok){
+      let msg='Could not save — please try again or screenshot this and send it to Rick.';
+      try{const err=await res.json();if(err&&err.message)msg='Error: '+err.message;}catch(_){}
+      toast(msg);
+      if(btn){btn.disabled=false;btn.textContent='Submit to estimating queue →';}
+      return;
+    }
     toast('Walk submitted ✓');
-  } catch(e){toast('Saved locally');}
-  showScreen('s-home');
+    showScreen('s-home');
+  } catch(e){
+    toast('Network error — please try again.');
+    if(btn){btn.disabled=false;btn.textContent='Submit to estimating queue →';}
+  }
 }
 
 // ── ESTIMATING ─────────────────────────────────────────

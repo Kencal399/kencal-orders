@@ -439,6 +439,17 @@ async function loadWalks() {
   const el = document.getElementById('walksList');
   try {
     const res = await fetch(SUPABASE_URL + '/rest/v1/site_walks?select=id,customer,address,walk_date,price_tier,complexity_score&order=created_at.desc&limit=20', { headers: HEADERS });
+    // Previously the response status was never checked, so a failed query
+    // (bad/missing column, permissions, etc.) still fell through to the
+    // "no walks" message below — indistinguishable from there really being
+    // none. Now a real server error says so explicitly instead of hiding
+    // as an empty list.
+    if (!res.ok) {
+      let msg = 'Could not load previous walk-throughs — please refresh or tell Rick.';
+      try { const err = await res.json(); if (err && err.message) msg = 'Error: ' + err.message; } catch(_) {}
+      el.innerHTML = '<div class="loading-msg" style="color:var(--danger);">' + msg + '</div>';
+      return;
+    }
     const data = await res.json();
     if (!data.length) { el.innerHTML = '<div class="loading-msg">No previous walk-throughs yet.</div>'; return; }
     el.innerHTML = '<div class="walks-list">' + data.map(w => `
