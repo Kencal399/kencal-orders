@@ -237,6 +237,9 @@ input[type=number],input[type=text],select,textarea{width:100%;font-size:14px;bo
   body.printing-receipts-report{max-width:none !important;margin:0 !important;}
   .rprt-page{max-width:100% !important;}
   .rprt-cardholder-block{break-inside:avoid;}
+  /* Per-cardholder report: each person's pages start on a fresh sheet. */
+  .rprt-packet{break-after:page;page-break-after:always;}
+  .rprt-packet:last-child{break-after:auto;page-break-after:auto;}
   .rprt-glgroup-header{break-after:avoid;}
   .rprt-subtable tr{break-inside:avoid;}
   .qc-print-issue{break-inside:avoid;}
@@ -1929,7 +1932,9 @@ async function editWO(id) {
 
   document.getElementById('wo-form-title').textContent = 'Edit Work Order';
   document.getElementById('wo-edit-id').value = id;
+  // A previous successful save leaves this button disabled; re-enable it for the edit.
   document.getElementById('wo-submit-btn').textContent = 'Save Changes';
+  document.getElementById('wo-submit-btn').disabled = false;
   document.getElementById('wo-date').value = wo.work_date || '';
   document.getElementById('wo-loc-search').value = wo.location_name || '';
   document.getElementById('wo-loc-name').value = wo.location_name || '';
@@ -2973,6 +2978,17 @@ async function loadReceiptsLog() {
       catSel.innerHTML = '<option value="">All categories</option>' +
         _rcptCategories.map(c => `<option value="${c.category.replace(/"/g,'&quot;')}">${c.category}</option>`).join('');
     }
+    // Cardholder filter (Mary needs to view/total one person's charges at a
+    // time while matching against each cardholder's paper statement).
+    // Keeps the current selection across reloads when that person still exists.
+    const chSel = document.getElementById('rcptlog-cardholder-filter');
+    if (chSel) {
+      const prev = chSel.value;
+      const names = receiptCardholderNames();
+      chSel.innerHTML = '<option value="">All cardholders</option>' +
+        names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
+      if (prev && names.includes(prev)) chSel.value = prev;
+    }
     filterReceiptsLog();
   } catch(e) {
     list.innerHTML = '<p style="color:var(--fail);font-size:13px;padding:8px;">Error loading receipts.</p>';
@@ -2996,6 +3012,13 @@ function isSeparateStatementReceipt(r) {
 // (e.g. "Supplies", "Janitorial Supplies") without hard-coding one exact name.
 function isSuppliesCategory(cat) { return /suppl/i.test(cat || ''); }
 
+// One consistent notion of "whose charge is this" — same fallback the PDF
+// report has always used, so the Receipts Log filter, CSV and report agree.
+function cardholderKey(r) { return r.cardholder_name || r.submitted_by || 'Unknown'; }
+function receiptCardholderNames() {
+  return [...new Set((_allReceipts || []).map(cardholderKey))].sort((a,b) => a.localeCompare(b));
+}
+
 function filterReceiptsLog() {
   const q = (document.getElementById('rcptlog-search').value || '').toLowerCase();
   const sort = document.getElementById('rcptlog-sort').value;
@@ -3005,6 +3028,7 @@ function filterReceiptsLog() {
   const dropShipOnly = document.getElementById('rcptlog-dropship') && document.getElementById('rcptlog-dropship').checked;
   const sepStatementOnly = document.getElementById('rcptlog-sepstatement') && document.getElementById('rcptlog-sepstatement').checked;
   const suppliesOnly = document.getElementById('rcptlog-supplies') && document.getElementById('rcptlog-supplies').checked;
+  const cardholderSel = (document.getElementById('rcptlog-cardholder-filter') || {}).value || '';
   // Amount matching: strip everything but digits/decimal from the query so
   // "$342.18", "342.18", and "342" all work — a bare "342" matches
   // "342.18" too (substring match), same forgiving behavior as the text
@@ -3017,6 +3041,7 @@ function filterReceiptsLog() {
     (!dropShipOnly || r.drop_shipment) &&
     (!sepStatementOnly || isSeparateStatementReceipt(r)) &&
     (!suppliesOnly || isSuppliesCategory(r.category)) &&
+    (!cardholderSel || cardholderKey(r).toLowerCase() === cardholderSel.toLowerCase()) &&
     (!cat || r.category === cat) &&
     (!q ||
       (r.vendor||'').toLowerCase().includes(q) ||
@@ -3036,8 +3061,11 @@ function filterReceiptsLog() {
   // running total by default, same principle as the PDF Report, so this
   // number always reads as "what's on Rick's own statement" — they still
   // show in the list below with a badge, just called out of the total.
-  const mainRowsForTotal = sepStatementOnly ? rows : rows.filter(r => !isSeparateStatementReceipt(r));
-  const sepRowsForTotal = sepStatementOnly ? [] : rows.filter(r => isSeparateStatementReceipt(r));
+  // Viewing one specific cardholder: total that person's charges outright,
+  // even if they're on a separate-company statement (otherwise it'd read $0).
+  const totalAll = sepStatementOnly || !!cardholderSel;
+  const mainRowsForTotal = totalAll ? rows : rows.filter(r => !isSeparateStatementReceipt(r));
+  const sepRowsForTotal = totalAll ? [] : rows.filter(r => isSeparateStatementReceipt(r));
   const mainTotal = mainRowsForTotal.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
   const sepTotal = sepRowsForTotal.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
   document.getElementById('rcptlog-total').textContent = `${rows.length} receipt${rows.length!==1?'s':''} · $${mainTotal.toLocaleString('en-US',{minimumFractionDigits:2})}` +
@@ -3084,8 +3112,10 @@ function exportReceiptsCSV() {
   const cat = document.getElementById('rcptlog-cat-filter').value;
   const qAmount = q.replace(/[^0-9.]/g, '');
   const suppliesOnly = document.getElementById('rcptlog-supplies') && document.getElementById('rcptlog-supplies').checked;
+  const cardholderSel = (document.getElementById('rcptlog-cardholder-filter') || {}).value || '';
   let rows = _allReceipts.filter(r =>
     (!suppliesOnly || isSuppliesCategory(r.category)) &&
+    (!cardholderSel || cardholderKey(r).toLowerCase() === cardholderSel.toLowerCase()) &&
     (!cat || r.category === cat) &&
     (!q ||
       (r.vendor||'').toLowerCase().includes(q) ||
@@ -3122,13 +3152,32 @@ function openReceiptsPdfExport() {
   document.getElementById('rprt-from').value = '';
   document.getElementById('rprt-to').value = '';
   document.getElementById('rprt-check-total').value = '';
+  // "Report for": the combined report (original behavior), a separate set
+  // of pages per cardholder (so Mary can attach each person's pages to their
+  // own paper statement without blacking out anyone else's charges), or one
+  // specific cardholder.
+  const forSel = document.getElementById('rprt-for');
+  forSel.innerHTML = '<option value="__combined__">All cardholders — one combined report</option>' +
+    '<option value="__packets__">All cardholders — separate pages for each</option>' +
+    receiptCardholderNames().map(n => `<option value="${n.replace(/"/g,'&quot;')}">Just ${n}</option>`).join('');
+  forSel.value = '__combined__';
+  onRprtForChange();
   showScreen('s-receipts-pdf');
+}
+
+// The AMEX statement-total check only makes sense for the combined report
+// (it compares one total to the one statement); hide it for per-cardholder.
+function onRprtForChange() {
+  const combined = document.getElementById('rprt-for').value === '__combined__';
+  document.getElementById('rprt-check-group').style.display = combined ? '' : 'none';
+  document.getElementById('rprt-for-hint').style.display = combined ? 'none' : 'block';
 }
 
 function generateReceiptsPdfReport() {
   const from = document.getElementById('rprt-from').value;
   const to = document.getElementById('rprt-to').value;
   if (!from || !to) { toast('Please pick both a From and To date'); return; }
+  const forVal = document.getElementById('rprt-for').value || '__combined__';
   const checkTotalRaw = document.getElementById('rprt-check-total').value;
   const checkTotal = checkTotalRaw ? parseFloat(checkTotalRaw) : null;
 
@@ -3158,7 +3207,7 @@ function generateReceiptsPdfReport() {
   // sections for one set of rows — called once for the main statement and,
   // if there are any, once more for separate-statement cardholders, so
   // both read in exactly the same format without duplicating this logic.
-  function buildReportSections(sectionRows) {
+  function buildReportSections(sectionRows, nameOnEachReceipt) {
     const dropShipRows = sectionRows.filter(r => r.drop_shipment);
     const dropShipTotal = dropShipRows.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
     const glRows = sectionRows.filter(r => !r.drop_shipment);
@@ -3234,7 +3283,7 @@ function generateReceiptsPdfReport() {
       const items = receipts.map(r => `
         <div class="rprt-receipt">
           <div class="details">
-            <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'} · ${fmt(r.amount)}</div>
+            <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'} · ${fmt(r.amount)}${nameOnEachReceipt ? ' · <span style="color:#555;">'+name+'</span>' : ''}</div>
             <div>Category: ${r.category||'—'} ${r.needs_job_match ? '<span style="color:#A32D2D;font-weight:700;"> (needs job match)</span>' : ''}${r.no_receipt ? '<span style="color:#7A5A12;font-weight:700;"> (no receipt on file)</span>' : ''}${r.drop_shipment ? '<span style="color:#1B2A4A;font-weight:700;"> (📦 drop shipment — see Drop Shipments section)</span>' : ''}${splitBadge(r)}</div>
             <div>Job/Location: ${r.location_name || '—'}${r.job_number ? ' ('+r.job_number+')' : ''}</div>
             ${r.notes ? `<div>Notes: ${r.notes}</div>` : ''}
@@ -3283,7 +3332,7 @@ function generateReceiptsPdfReport() {
         ${other.detailHtml}
       </div>` : '';
 
-  const html = `
+  let html = `
     <div class="rprt-page">
       <div class="rprt-header">
         <div class="brand">KENCAL MAINTENANCE CORPORATION</div>
@@ -3314,6 +3363,53 @@ function generateReceiptsPdfReport() {
       </div>
       ${otherSectionHtml}
     </div>`;
+
+  // Per-cardholder mode: one self-contained set of pages per person — own
+  // header, total, GL + job summary, drop shipments (if any) and receipt
+  // photos — with a page break between people. Separate-statement
+  // cardholders (e.g. Yobanny) get their own pages too, labeled as such,
+  // since this mode is about matching each person's own statement. The
+  // cardholder's name is repeated on every receipt line so a page pulled out
+  // of the middle of someone's pages still says whose it is.
+  if (forVal !== '__combined__') {
+    const byName = {};
+    allRows.forEach(r => { const n = cardholderKey(r); (byName[n] = byName[n] || []).push(r); });
+    let names = Object.keys(byName).sort((a,b) => a.localeCompare(b));
+    if (forVal !== '__packets__') names = names.filter(n => n.toLowerCase() === forVal.toLowerCase());
+    if (!names.length) { toast('No receipts for that selection in this date range'); return; }
+    html = names.map(name => {
+      const rowsFor = byName[name];
+      const sec = buildReportSections(rowsFor, true);
+      const total = rowsFor.reduce((s,r) => s + (parseFloat(r.amount)||0), 0);
+      const sepNote = isSeparateStatementReceipt(rowsFor[0])
+        ? '<div style="font-size:11px;color:var(--text2);margin-top:6px;">On a separate company statement.</div>' : '';
+      return `
+    <div class="rprt-page rprt-packet">
+      <div class="rprt-header">
+        <div class="brand">KENCAL MAINTENANCE CORPORATION</div>
+        <div class="title">Credit Card Expense Report — ${name}</div>
+        <div class="sub">${dateLabel(from)} – ${dateLabel(to)} · Generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      </div>
+      <div class="rprt-section">
+        <div class="rprt-check">
+          <div>Total logged in K Pro for ${name}<div class="amt">${fmt(total)}</div></div>
+          <div>Receipts<div class="amt">${rowsFor.length}</div></div>
+        </div>${sepNote}
+      </div>
+      <div class="rprt-section">
+        <h3>GL Account + Job Number Summary (for WinTeam entry)</h3>
+        ${sec.glJobBlocksHtml || '<div style="font-size:13px;color:#999;">No GL-coded receipts for this cardholder.</div>'}
+        <div class="rprt-glgroup-grandtotal"><span>Total</span><span>${fmt(sec.glJobTotal)}</span></div>
+        ${sec.dropShipTotal > 0 ? `<div style="font-size:11px;color:var(--text2);margin-top:6px;">Excludes ${fmt(sec.dropShipTotal)} in drop shipments, listed below. GL summary total + drop shipments = ${fmt(sec.glJobTotal + sec.dropShipTotal)}, matching the total above.</div>` : ''}
+      </div>
+      ${sec.dropShipTotal > 0 ? `<div class="rprt-section"><h3>Drop Shipments <span style="font-weight:400;font-size:12px;color:var(--text2);">— entered via WinTeam Inventory, not in the summary above</span></h3>${sec.dropShipHtml}</div>` : ''}
+      <div class="rprt-section">
+        <h3>Receipt Detail &amp; Photos</h3>
+        ${sec.detailHtml}
+      </div>
+    </div>`;
+    }).join('');
+  }
 
   const container = document.getElementById('rcpt-print-container');
   container.innerHTML = html;
@@ -4009,6 +4105,9 @@ async function deleteRecurringCharge(id) {
       <select id="rcptlog-cat-filter" onchange="filterReceiptsLog()" style="flex:1;font-size:13px;border-radius:8px;border:0.5px solid var(--border);padding:7px 10px;">
         <option value="">All categories</option>
       </select>
+      <select id="rcptlog-cardholder-filter" onchange="filterReceiptsLog()" style="flex:1;font-size:13px;border-radius:8px;border:0.5px solid var(--border);padding:7px 10px;">
+        <option value="">All cardholders</option>
+      </select>
     </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--attn);font-weight:600;">
       <input type="checkbox" id="rcptlog-needs-match" onchange="filterReceiptsLog()"> Show only receipts needing a job match
@@ -4064,7 +4163,12 @@ async function deleteRecurringCharge(id) {
           <input type="date" id="rprt-to">
         </div>
       </div>
-      <div class="input-group">
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Report for</label>
+        <select id="rprt-for" onchange="onRprtForChange()"></select>
+      </div>
+      <div id="rprt-for-hint" style="display:none;font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5;">Each cardholder gets their own pages: their own total, GL/job summary and receipt photos, with nobody else's charges on them, and each one starts on a fresh page. Compare each total to that cardholder's statement.</div>
+      <div class="input-group" id="rprt-check-group">
         <label class="field-label">AMEX statement total <span style="color:var(--text2);font-weight:400;">(optional — to check against)</span></label>
         <input type="number" id="rprt-check-total" placeholder="0.00" step="0.01">
       </div>
