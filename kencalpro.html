@@ -654,7 +654,10 @@ function scoreColor(s){if(!s)return'var(--text)';return s>=90?'var(--pass)':s>=7
 // ── LOGIN ──────────────────────────────────────────────
 async function loadSupervisors() {
   try {
-    const data = await sbFetch('kencal_supervisors?select=id,name,role,active,has_card,receipts_admin&active=eq.true&order=name');
+    // receipts_only is a newer column; if it hasn't been added yet the request
+    // returns an error object, so fall back to the original column list.
+    let data = await sbFetch('kencal_supervisors?select=id,name,role,active,has_card,receipts_admin,receipts_only&active=eq.true&order=name');
+    if (!Array.isArray(data)) data = await sbFetch('kencal_supervisors?select=id,name,role,active,has_card,receipts_admin&active=eq.true&order=name');
     const list = document.getElementById('sup-list');
     if (!data.length) { list.innerHTML='<p style="text-align:center;color:var(--text2);padding:20px;">No supervisors found.</p>'; return; }
     const colors=['#1B2A4A','#0F6E56','#533FB7','#854F0B','#A32D2D','#185FA5','#2D7A4A','#7A2D5A'];
@@ -662,7 +665,7 @@ async function loadSupervisors() {
       const ini=s.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
       const col=colors[i%colors.length];
       const roleLabel=s.role.charAt(0).toUpperCase()+s.role.slice(1);
-      return `<div class="sup-card" onclick="selectSup(${s.id},'${s.name.replace(/'/g,"\\'")}','${s.role}','${ini}','${col}',${!!s.has_card},${!!s.receipts_admin})">
+      return `<div class="sup-card" onclick="selectSup(${s.id},'${s.name.replace(/'/g,"\\'")}','${s.role}','${ini}','${col}',${!!s.has_card},${!!s.receipts_admin},${!!s.receipts_only})">
         <div class="sup-avatar" style="background:${col};">${ini}</div>
         <div style="flex:1;"><div class="sup-name">${s.name}</div><div class="sup-role-label">${roleLabel}</div></div>
         <span style="font-size:20px;color:#ccc;">›</span>
@@ -671,8 +674,8 @@ async function loadSupervisors() {
   } catch(e) { document.getElementById('sup-list').innerHTML='<p style="color:var(--fail);padding:16px;font-size:13px;">Error loading. Check connection.</p>'; }
 }
 
-function selectSup(id, name, role, initials, color, hasCard, receiptsAdmin) {
-  state.supervisor={id,name,role,initials,color,has_card:!!hasCard,receipts_admin:!!receiptsAdmin};
+function selectSup(id, name, role, initials, color, hasCard, receiptsAdmin, receiptsOnly) {
+  state.supervisor={id,name,role,initials,color,has_card:!!hasCard,receipts_admin:!!receiptsAdmin,receipts_only:!!receiptsOnly};
   document.getElementById('pin-name').textContent=name;
   document.getElementById('pin-avatar').textContent=initials;
   document.getElementById('pin-avatar').style.background=color;
@@ -708,7 +711,7 @@ function buildHome() {
   document.getElementById('home-name').textContent=name;
   const roleLabels={supervisor:'Field Supervisor',manager:'Account Manager',admin:'Administrator'};
   document.getElementById('home-role-badge').textContent=roleLabels[role]||role;
-  const tiles=[];
+  let tiles=[];
   // QC — all roles
   tiles.push({id:'qc',icon:'✓',bg:'#EAF3DE',name:'QC Inspector',desc:'Rate cleanliness, flag issues, generate reports',screen:'s-qc-home',action:loadQCLocations});
   // Site Walk — manager + admin
@@ -733,6 +736,9 @@ function buildHome() {
     tiles.push({id:'receiptslog',icon:'🧾',bg:'#FDF0EE',name:'Receipts Log',desc:'Review all receipts, export for WinTeam',screen:'s-receipts-log',action:loadReceiptsLog});
   if(name==='Santiago Alzate')
     tiles.push({id:'warehouse',icon:'🏭',bg:'#FAEEDA',name:'Warehouse Admin',desc:'Approve orders, distribution logs',screen:'s-supply',action:openWarehouse});
+
+  // Receipts-only admins (e.g. accounting) see nothing but the Receipts Log.
+  if (state.supervisor.receipts_only) tiles = tiles.filter(t => t.id === 'receiptslog');
 
   const grid=document.getElementById('tile-grid');
   grid.innerHTML=tiles.map(t=>`
@@ -2256,7 +2262,7 @@ function rcptHeaders(extra) {
 async function openReceiptFormForAdmin() {
   _rcptFormOrigin = 'log';
   if (!_rcptLocs.length) await loadReceiptLocations();
-  if (!_rcptCategories.length) await loadReceiptCategories();
+  await loadReceiptCategories(); // always refresh: categories/GL codes may have just been added or changed
   resetReceiptForm();
   document.getElementById('rcpt-cardholder').value = '';
   showScreen('s-receipts-new');
@@ -2729,7 +2735,12 @@ function resetReceiptForm() {
   document.getElementById('rcpt-vendor').value = '';
   document.getElementById('rcpt-amount').value = '';
   resetMealWizard();
-  document.getElementById('rcpt-cardholder').value = (state.supervisor && state.supervisor.name) || '';
+  // Admin logging on someone else's behalf (from Receipts Log) must pick the
+  // cardholder explicitly; otherwise default to the logged-in person.
+  const _adminFromLog = _rcptFormOrigin === 'log' && state.supervisor && state.supervisor.receipts_admin;
+  document.getElementById('rcpt-cardholder').value = _adminFromLog ? '' : ((state.supervisor && state.supervisor.name) || '');
+  const _qp = document.getElementById('rcpt-cardholder-quickpick'); if (_qp) _qp.value = '';
+  const _req = document.getElementById('rcpt-cardholder-req'); if (_req) _req.style.display = _adminFromLog ? 'inline' : 'none';
   document.getElementById('rcpt-card-last4').value = '';
   document.getElementById('rcpt-notes').value = '';
   document.getElementById('rcpt-no-receipt').checked = false;
@@ -2754,6 +2765,16 @@ function resetReceiptForm() {
   renderReceiptPhotoGrid();
 }
 
+// True when an admin is logging a NEW receipt from the Receipts Log without
+// having chosen whose it is (it would otherwise fall back to the admin's own
+// name and land on the wrong person's statement pages).
+function adminCardholderMissing() {
+  const editId = document.getElementById('rcpt-edit-id').value;
+  const isAdmin = state.supervisor && state.supervisor.receipts_admin;
+  if (!isAdmin || editId || _rcptFormOrigin !== 'log') return false;
+  return !(document.getElementById('rcpt-cardholder').value || '').trim();
+}
+
 async function submitReceipt() {
   const editId = document.getElementById('rcpt-edit-id').value;
   const isSplit = !editId && document.getElementById('rcpt-split-toggle').checked;
@@ -2764,6 +2785,7 @@ async function submitReceipt() {
   const amount = document.getElementById('rcpt-amount').value;
   const category = document.getElementById('rcpt-category-actual').value;
 
+  if (adminCardholderMissing()) { toast('Choose whose receipt this is'); document.getElementById('rcpt-cardholder-quickpick').focus(); return; }
   if (!expenseDate) { toast('Please select a date'); return; }
   if (!amount || parseFloat(amount) <= 0) { toast('Please enter an amount'); return; }
   if (!category) { toast(document.getElementById('rcpt-category').value === MEAL_WIZARD_SENTINEL ? 'Please finish the meal questions above' : 'Please select a category'); return; }
@@ -2842,6 +2864,7 @@ async function submitSplitReceipt() {
   const tax = parseFloat(document.getElementById('rcpt-split-tax').value) || 0;
   const category = document.getElementById('rcpt-category-actual').value;
 
+  if (adminCardholderMissing()) { toast('Choose whose receipt this is'); document.getElementById('rcpt-cardholder-quickpick').focus(); return; }
   if (!expenseDate) { toast('Please select a date'); return; }
   if (!totalCharged || totalCharged <= 0) { toast('Please enter the total amount charged'); return; }
   if (!category) { toast(document.getElementById('rcpt-category').value === MEAL_WIZARD_SENTINEL ? 'Please finish the meal questions above' : 'Please select a category'); return; }
@@ -3073,10 +3096,16 @@ function filterReceiptsLog() {
 
   const list = document.getElementById('rcpt-log-list');
   if (!rows.length) { list.innerHTML = '<p style="color:var(--text2);font-size:14px;padding:8px;">No receipts match.</p>'; return; }
+  // Admin quick-fix controls: every category (including admin-only and meal GL
+  // lines) is offered, so a wrongly-picked category can be corrected right
+  // from the log without opening the cardholder's own login.
+  const allCatNames = (_rcptCategories || []).map(c => c.category);
   list.innerHTML = rows.map(r => {
     const d = ymdToLocalDate(r.expense_date);
     const dateLabel = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
     const amountLabel = `$${parseFloat(r.amount||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+    const catNames = (r.category && !allCatNames.includes(r.category)) ? [r.category, ...allCatNames] : allCatNames;
+    const catOptions = catNames.map(n => `<option value="${n.replace(/"/g,'&quot;')}"${n === r.category ? ' selected' : ''}>${n}</option>`).join('');
     const cardLabel = r.card_last4 ? ` · •••• ${r.card_last4}` : '';
     return `<div class="card" style="margin-bottom:8px;padding:12px 14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -3087,9 +3116,70 @@ function filterReceiptsLog() {
       <div style="font-size:12px;color:var(--text2);">${r.cardholder_name || r.submitted_by || '—'}${cardLabel} · logged by ${r.submitted_by || '—'}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
       ${r.photo_urls && r.photo_urls.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.photo_urls.map(u=>attachmentTileHtml(u,60)).join('')}</div>` : ''}
-      <button onclick="editReceiptFromLog(${r.id})" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;margin-top:8px;">Edit</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <label style="font-size:12px;color:var(--text2);">Category</label>
+        <select onchange="changeReceiptCategory(${r.id}, this)" style="flex:1;min-width:140px;font-size:12px;border-radius:8px;border:0.5px solid var(--border);padding:6px 8px;">${catOptions}</select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button onclick="editReceiptFromLog(${r.id})" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">Edit</button>
+        <button onclick="deleteReceiptFromLog(${r.id})" style="background:#fff;color:var(--fail);border:1px solid var(--fail);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">Delete</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+
+// Quick category fix from the Receipts Log (all receipts_admin users).
+async function changeReceiptCategory(id, selectEl) {
+  const r = _allReceipts.find(x => x.id === id);
+  const newCat = selectEl.value;
+  if (!r || !newCat || newCat === r.category) return;
+  if (!(state.supervisor && state.supervisor.receipts_admin)) { toast('Admins only'); filterReceiptsLog(); return; }
+  const amt = `$${parseFloat(r.amount||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+  if (!confirm(`Change category for ${r.vendor || 'this receipt'} (${amt}, ${cardholderKey(r)})\nfrom "${r.category || '—'}" to "${newCat}"?`)) { selectEl.value = r.category || ''; return; }
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_receipts?id=eq.${id}`, {
+      method: 'PATCH', headers: rcptHeaders({'Prefer':'return=representation'}),
+      body: JSON.stringify({category: newCat, updated_at: new Date().toISOString()})
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !Array.isArray(body) || !body.length) throw new Error('not saved');
+    r.category = newCat;
+    toast('Category updated ✓');
+    filterReceiptsLog();
+  } catch(e) {
+    toast('Could not change the category — check connection');
+    selectEl.value = r.category || '';
+  }
+}
+
+// Permanent delete from the Receipts Log (all receipts_admin users).
+// Photos already uploaded stay in storage; only the receipt row is removed.
+async function deleteReceiptFromLog(id) {
+  const r = _allReceipts.find(x => x.id === id);
+  if (!r) return;
+  if (!(state.supervisor && state.supervisor.receipts_admin)) { toast('Admins only'); return; }
+  const amt = `$${parseFloat(r.amount||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+  const dLabel = ymdToLocalDate(r.expense_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  if (!confirm(`Permanently delete this receipt?\n\n${r.vendor || '—'} · ${amt}\n${dLabel} · ${cardholderKey(r)}\n\nThis cannot be undone.`)) return;
+  let ids = [id];
+  if (r.split_group_id) {
+    const others = _allReceipts.filter(x => x.split_group_id === r.split_group_id && x.id !== id);
+    if (others.length && confirm(`This charge is one line of a ${others.length + 1}-line split across jobs.\n\nOK = delete ALL ${others.length + 1} lines of the split\nCancel = delete only this line`)) {
+      ids = [id, ...others.map(x => x.id)];
+    }
+  }
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_receipts?id=in.(${ids.join(',')})`, {
+      method: 'DELETE', headers: rcptHeaders({'Prefer':'return=representation'})
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !Array.isArray(body) || !body.length) throw new Error('not deleted');
+    const gone = new Set(body.map(x => x.id));
+    _allReceipts = _allReceipts.filter(x => !gone.has(x.id));
+    toast(gone.size > 1 ? `Deleted ${gone.size} receipts` : 'Receipt deleted');
+    filterReceiptsLog();
+  } catch(e) { toast('Could not delete — nothing was removed'); }
 }
 
 // Opens any receipt for editing from Receipts Log — this is where an
@@ -3101,31 +3191,43 @@ function filterReceiptsLog() {
 async function editReceiptFromLog(id) {
   _rcptFormOrigin = 'log';
   if (!_rcptLocs.length) await loadReceiptLocations();
-  if (!_rcptCategories.length) await loadReceiptCategories();
+  await loadReceiptCategories(); // refresh so the dropdown includes any newly added categories
   editReceipt(id);
 }
 
+// CSV export now mirrors the PDF Report screen: pick a date range (optional,
+// blank = no limit) and either everyone or one cardholder. It no longer
+// depends on whatever happens to be filtered in the log.
+function openReceiptsCsvExport() {
+  document.getElementById('rcsv-from').value = '';
+  document.getElementById('rcsv-to').value = '';
+  document.getElementById('rcsv-supplies').checked = false;
+  document.getElementById('rcsv-dropship').checked = false;
+  const sel = document.getElementById('rcsv-for');
+  sel.innerHTML = '<option value="">All cardholders</option>' +
+    receiptCardholderNames().map(n => `<option value="${n.replace(/"/g,'&quot;')}">Just ${n}</option>`).join('');
+  sel.value = '';
+  showScreen('s-receipts-csv');
+}
+
 function exportReceiptsCSV() {
+  const from = document.getElementById('rcsv-from').value;
+  const to = document.getElementById('rcsv-to').value;
+  const forName = document.getElementById('rcsv-for').value;
+  const suppliesOnly = document.getElementById('rcsv-supplies').checked;
+  const dropShipOnly = document.getElementById('rcsv-dropship').checked;
+  if (from && to && from > to) { toast('The From date is after the To date'); return; }
   const glByCat = {};
   _rcptCategories.forEach(c => glByCat[c.category] = c.gl_account || '');
-  const q = (document.getElementById('rcptlog-search').value || '').toLowerCase();
-  const cat = document.getElementById('rcptlog-cat-filter').value;
-  const qAmount = q.replace(/[^0-9.]/g, '');
-  const suppliesOnly = document.getElementById('rcptlog-supplies') && document.getElementById('rcptlog-supplies').checked;
-  const cardholderSel = (document.getElementById('rcptlog-cardholder-filter') || {}).value || '';
   let rows = _allReceipts.filter(r =>
+    (!from || r.expense_date >= from) &&
+    (!to || r.expense_date <= to) &&
+    (!forName || cardholderKey(r).toLowerCase() === forName.toLowerCase()) &&
     (!suppliesOnly || isSuppliesCategory(r.category)) &&
-    (!cardholderSel || cardholderKey(r).toLowerCase() === cardholderSel.toLowerCase()) &&
-    (!cat || r.category === cat) &&
-    (!q ||
-      (r.vendor||'').toLowerCase().includes(q) ||
-      (r.location_name||'').toLowerCase().includes(q) ||
-      (r.job_number||'').toLowerCase().includes(q) ||
-      (r.cardholder_name||'').toLowerCase().includes(q) ||
-      (r.submitted_by||'').toLowerCase().includes(q) ||
-      (qAmount && parseFloat(r.amount||0).toFixed(2).includes(qAmount))
-    )
+    (!dropShipOnly || r.drop_shipment)
   );
+  if (!rows.length) { toast('No receipts match those choices'); return; }
+  rows.sort((a,b) => (a.expense_date||'').localeCompare(b.expense_date||'') || cardholderKey(a).localeCompare(cardholderKey(b)));
   const headers = ['Date','Cardholder','Card Last 4','Vendor','Amount','Category','GL Account','Job Number','Location','Submitted By','No Receipt','Drop Shipment','Separate Company Statement','Split Ref','Notes','Photo/PDF URL(s)'];
   const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
   const lines = [headers.map(esc).join(',')];
@@ -3142,9 +3244,12 @@ function exportReceiptsCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `kencal-receipts-${new Date().toISOString().split('T')[0]}.csv`;
+  const slug = t => String(t).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  const range = (from || to) ? `_${from || 'start'}_to_${to || 'latest'}` : `_${localToday()}`;
+  a.download = `kencal-receipts${forName ? '-' + slug(forName) : ''}${range}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length} receipt${rows.length!==1?'s':''} ✓`);
 }
 
 // ── PDF REPORT (ADMIN) ──────────────────────────────────
@@ -3492,6 +3597,7 @@ async function saveReceiptCategoryGL(category) {
     });
     if (!res.ok) throw new Error(await res.text());
     toast('Saved ✓');
+    loadReceiptCategories();
   } catch(e) { toast('Error saving — check connection'); }
 }
 
@@ -3504,6 +3610,7 @@ async function deleteReceiptCategory(category) {
     if (!res.ok) throw new Error(await res.text());
     toast('Deleted');
     loadReceiptCategoriesAdmin();
+    loadReceiptCategories();
   } catch(e) { toast('Error deleting — check connection'); }
 }
 
@@ -3522,6 +3629,7 @@ async function addReceiptCategory() {
     document.getElementById('newcat-gl').value = '';
     toast('Category added ✓');
     loadReceiptCategoriesAdmin();
+    loadReceiptCategories();
   } catch(e) { toast('Error adding — check connection'); }
 }
 
@@ -4019,7 +4127,7 @@ async function deleteRecurringCharge(id) {
     </div>
     <div class="card">
       <div class="input-group" id="rcpt-cardholder-admin-row" style="display:none;margin-bottom:10px;">
-        <label class="field-label">Logging this for…</label>
+        <label class="field-label">Logging this for… <span id="rcpt-cardholder-req" style="color:var(--fail);display:none;">* required</span></label>
         <select id="rcpt-cardholder-quickpick" onchange="onCardholderQuickpick(this.value)">
           <option value="">— Select cardholder —</option>
         </select>
@@ -4125,7 +4233,7 @@ async function deleteRecurringCharge(id) {
       <input type="checkbox" id="rcptlog-sepstatement" onchange="filterReceiptsLog()"> Show only separate-company charges
     </label>
     <div style="display:flex;gap:8px;">
-      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="exportReceiptsCSV()">⬇ CSV</button>
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openReceiptsCsvExport()">⬇ CSV</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openReceiptsPdfExport()">🖨 PDF Report</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadReceiptCategoriesAdmin();showScreen('s-receipts-categories')">GL Codes</button>
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadCardholdersAdmin();showScreen('s-receipts-cardholders')">Cardholders</button>
@@ -4138,6 +4246,43 @@ async function deleteRecurringCharge(id) {
   <div class="scroll-body" style="padding-top:8px;">
     <div style="font-size:13px;color:var(--text2);font-weight:600;" id="rcptlog-total"></div>
     <div id="rcpt-log-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     RECEIPTS - CSV EXPORT (ADMIN)
+══════════════════════════════════════════ -->
+<div class="screen" id="s-receipts-csv">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-receipts-log')">‹</button>
+    <div class="top-bar-title">CSV Export</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <div class="card">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">Pick a date range, or leave both blank for every receipt.</div>
+      <div class="input-row" style="margin-bottom:10px;">
+        <div class="input-group">
+          <label class="field-label">From</label>
+          <input type="date" id="rcsv-from">
+        </div>
+        <div class="input-group">
+          <label class="field-label">To</label>
+          <input type="date" id="rcsv-to">
+        </div>
+      </div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Export for</label>
+        <select id="rcsv-for"></select>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);margin-bottom:8px;">
+        <input type="checkbox" id="rcsv-supplies"> Supplies category only
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);">
+        <input type="checkbox" id="rcsv-dropship"> Drop shipments only
+      </label>
+    </div>
+    <button class="btn-primary" onclick="exportReceiptsCSV()">Download CSV</button>
   </div>
 </div>
 
