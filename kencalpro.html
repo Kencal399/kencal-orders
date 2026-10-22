@@ -737,8 +737,9 @@ function buildHome() {
   if(name==='Santiago Alzate')
     tiles.push({id:'warehouse',icon:'🏭',bg:'#FAEEDA',name:'Warehouse Admin',desc:'Approve orders, distribution logs',screen:'s-supply',action:openWarehouse});
 
-  // Receipts-only admins (e.g. accounting) see nothing but the Receipts Log.
-  if (state.supervisor.receipts_only) tiles = tiles.filter(t => t.id === 'receiptslog');
+  // Receipts-only admins (e.g. accounting) see nothing but the Receipts Log, plus
+  // their own Receipts tile if they carry a company card (has_card).
+  if (state.supervisor.receipts_only) tiles = tiles.filter(t => t.id === 'receiptslog' || t.id === 'receipts');
 
   const grid=document.getElementById('tile-grid');
   grid.innerHTML=tiles.map(t=>`
@@ -2516,9 +2517,20 @@ const MEAL_WIZARD_CATEGORIES = [
 ];
 const MEAL_WIZARD_SENTINEL = '__MEALS_WIZARD__';
 
+// Loads kencal_gl_mapping including indirect_gl; if that column hasn't been
+// added yet the request errors, so retry without it (nothing breaks, the
+// indirect rule is simply inactive until the column exists).
+let _glHasIndirectCol = true;
+async function fetchGlMapping(cols) {
+  let d = await sbFetch(`kencal_gl_mapping?select=${cols},indirect_gl&order=sort_order`);
+  _glHasIndirectCol = Array.isArray(d);
+  if (!_glHasIndirectCol) d = await sbFetch(`kencal_gl_mapping?select=${cols}&order=sort_order`);
+  return Array.isArray(d) ? d : [];
+}
+
 async function loadReceiptCategories() {
   try {
-    _rcptCategories = await sbFetch('kencal_gl_mapping?select=category,gl_account,admin_only,sort_order&order=sort_order');
+    _rcptCategories = await fetchGlMapping('category,gl_account,admin_only,sort_order');
   } catch(e) { _rcptCategories = []; }
   const sel = document.getElementById('rcpt-category');
   if (!sel) return;
@@ -2537,6 +2549,7 @@ function onCategorySelect(value) {
     document.getElementById('rcpt-category-actual').value = value;
     document.getElementById('rcpt-meal-wizard').style.display = 'none';
   }
+  const gh = document.getElementById('rcpt-gas-hint'); if (gh) gh.style.display = hasIndirectRule(value) ? 'block' : 'none';
 }
 
 // Sets the form to reflect a category value already saved on a receipt
@@ -2555,6 +2568,7 @@ function selectMealCategoryValue(category) {
     document.getElementById('rcpt-category-actual').value = category;
     document.getElementById('rcpt-meal-wizard').style.display = 'none';
   }
+  const gh = document.getElementById('rcpt-gas-hint'); if (gh) gh.style.display = hasIndirectRule(category) ? 'block' : 'none';
 }
 
 function resetMealWizard(reopen) {
@@ -2735,6 +2749,7 @@ function resetReceiptForm() {
   document.getElementById('rcpt-vendor').value = '';
   document.getElementById('rcpt-amount').value = '';
   resetMealWizard();
+  const _gh = document.getElementById('rcpt-gas-hint'); if (_gh) _gh.style.display = 'none';
   // Admin logging on someone else's behalf (from Receipts Log) must pick the
   // cardholder explicitly; otherwise default to the logged-in person.
   const _adminFromLog = _rcptFormOrigin === 'log' && state.supervisor && state.supervisor.receipts_admin;
@@ -2990,7 +3005,7 @@ async function loadReceiptsLog() {
   try {
     const [receipts, cats, sepSups] = await Promise.all([
       sbFetch('kencal_receipts?order=expense_date.desc&limit=1000'),
-      sbFetch('kencal_gl_mapping?select=category,gl_account&order=sort_order'),
+      fetchGlMapping('category,gl_account'),
       sbFetch('kencal_supervisors?select=name&separate_statement=eq.true')
     ]);
     _allReceipts = receipts || [];
@@ -3035,6 +3050,35 @@ function isSeparateStatementReceipt(r) {
 // (e.g. "Supplies", "Janitorial Supplies") without hard-coding one exact name.
 function isSuppliesCategory(cat) { return /suppl/i.test(cat || ''); }
 
+// Direct vs indirect posting rule (Rick, 2026-10-22). A category can carry two
+// GL numbers on the GL Codes screen: "GL with a job" (gl_account) and "GL with no
+// job (indirect)" (indirect_gl). Cardholders only ever pick the category name.
+//   - job entered              -> gl_account, job as entered
+//   - no job, indirect_gl set  -> indirect_gl, job 90
+//   - waiting on a job match   -> stays NEEDS MATCH (never guessed)
+//   - no indirect_gl set       -> original behavior (gl_account, "no job - overhead")
+// Gas keeps built-in defaults (4097 / 4710) until its GL Codes boxes are filled in.
+const INDIRECT_JOB = '90';
+const GAS_DIRECT_GL_DEFAULT = '4097', GAS_INDIRECT_GL_DEFAULT = '4710';
+function isGasCategory(cat) { return String(cat || '').trim().toLowerCase() === 'gas'; }
+function categoryRow(cat) { return (_rcptCategories || []).find(c => c.category === cat); }
+function indirectGlFor(cat) {
+  const row = categoryRow(cat);
+  const v = row && row.indirect_gl ? String(row.indirect_gl).trim() : '';
+  return v || (isGasCategory(cat) ? GAS_INDIRECT_GL_DEFAULT : '');
+}
+function hasIndirectRule(cat) { return !!indirectGlFor(cat); }
+function effectiveGlJob(r, glByCat) {
+  const catGl = ((glByCat && glByCat[r.category]) || '') || (isGasCategory(r.category) ? GAS_DIRECT_GL_DEFAULT : '');
+  const job = r.job_number ? String(r.job_number).trim() : '';
+  const indGl = indirectGlFor(r.category);
+  if (indGl) {
+    if (job) return { gl: catGl || '(no GL set)', job };
+    if (r.needs_job_match) return { gl: catGl || '(no GL set)', job: 'NEEDS MATCH' };
+    return { gl: indGl, job: INDIRECT_JOB };
+  }
+  return { gl: catGl || '(no GL set)', job: job || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)') };
+}
 // One consistent notion of "whose charge is this" — same fallback the PDF
 // report has always used, so the Receipts Log filter, CSV and report agree.
 function cardholderKey(r) { return r.cardholder_name || r.submitted_by || 'Unknown'; }
@@ -3173,8 +3217,9 @@ async function deleteReceiptFromLog(id) {
     const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_receipts?id=in.(${ids.join(',')})`, {
       method: 'DELETE', headers: rcptHeaders({'Prefer':'return=representation'})
     });
+    if (!res.ok) { toast(await explainDeleteFailure(res, 'receipts')); return; }
     const body = await res.json().catch(() => null);
-    if (!res.ok || !Array.isArray(body) || !body.length) throw new Error('not deleted');
+    if (!Array.isArray(body) || !body.length) throw new Error('not deleted');
     const gone = new Set(body.map(x => x.id));
     _allReceipts = _allReceipts.filter(x => !gone.has(x.id));
     toast(gone.size > 1 ? `Deleted ${gone.size} receipts` : 'Receipt deleted');
@@ -3232,9 +3277,14 @@ function exportReceiptsCSV() {
   const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
   const lines = [headers.map(esc).join(',')];
   rows.forEach(r => {
+    // GL Account / Job Number columns use the same posting rules as the PDF
+    // (e.g. Gas with no job -> 4710 / job 90). Placeholders stay blank.
+    const eg = effectiveGlJob(r, glByCat);
+    const csvGl = eg.gl === '(no GL set)' ? '' : eg.gl;
+    const csvJob = (eg.job.startsWith('(') || eg.job === 'NEEDS MATCH') ? (r.job_number || '') : eg.job;
     lines.push([
       r.expense_date, r.cardholder_name, r.card_last4, r.vendor, r.amount,
-      r.category, glByCat[r.category] || '', r.job_number, r.location_name,
+      r.category, csvGl, csvJob, r.location_name,
       r.submitted_by, r.no_receipt ? 'Yes' : '', r.drop_shipment ? 'Yes' : '',
       isSeparateStatementReceipt(r) ? 'Yes' : '',
       r.split_group_id ? r.split_group_id.replace(/^SPLIT-/,'') : '', r.notes, (r.photo_urls||[]).join(' | ')
@@ -3319,8 +3369,7 @@ function generateReceiptsPdfReport() {
 
     const glJobMap = {};
     glRows.forEach(r => {
-      const gl = glByCat[r.category] || '(no GL set)';
-      const job = r.job_number || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)');
+      const { gl, job } = effectiveGlJob(r, glByCat);
       const key = gl + '||' + job;
       if (!glJobMap[key]) glJobMap[key] = {gl, job, category: r.category, amount: 0, receipts: []};
       glJobMap[key].amount += parseFloat(r.amount) || 0;
@@ -3564,15 +3613,24 @@ async function loadReceiptCategoriesAdmin() {
   const list = document.getElementById('rcpt-cat-list');
   list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const cats = await sbFetch('kencal_gl_mapping?select=category,gl_account,gl_description,admin_only,sort_order&order=sort_order');
+    const cats = await fetchGlMapping('category,gl_account,gl_description,admin_only,sort_order');
     _rcptCategories = cats || [];
-    list.innerHTML = _rcptCategories.map(c => { const safe = c.category.replace(/[^a-zA-Z0-9]/g,'_'); return `
+    const noteEl = document.getElementById('rcpt-cat-indirect-note');
+    if (noteEl) noteEl.style.display = _glHasIndirectCol ? 'none' : 'block';
+    const newInd = document.getElementById('newcat-gl-indirect'); if (newInd) newInd.style.display = _glHasIndirectCol ? '' : 'none';
+    // Shown A-Z by name so a category is easy to find (the saved sort_order is by date added).
+    const catsByName = _rcptCategories.slice().sort((x,y) => x.category.localeCompare(y.category, undefined, {sensitivity:'base', numeric:true}));
+    list.innerHTML = catsByName.map(c => { const safe = c.category.replace(/[^a-zA-Z0-9]/g,'_'); return `
       <div class="card" style="margin-bottom:8px;padding:12px 14px;">
         <div style="font-size:14px;font-weight:600;margin-bottom:8px;">${c.category}${c.admin_only ? ' <span class="badge" style="background:#F4F5F7;color:var(--text2);font-size:10px;">admin-only</span>' : ''}</div>
         <div class="input-group" style="margin-bottom:8px;">
-          <label class="field-label">GL account number</label>
+          <label class="field-label">${_glHasIndirectCol ? 'GL with a job' : 'GL account number'}</label>
           <input type="text" id="gl-${safe}" value="${(c.gl_account||'').replace(/"/g,'&quot;')}" placeholder="e.g. 5010">
         </div>
+        ${_glHasIndirectCol ? `<div class="input-group" style="margin-bottom:8px;">
+          <label class="field-label">GL with no job (indirect) <span style="color:var(--text2);font-weight:400;">— posts to job 90. Leave blank if not needed.</span></label>
+          <input type="text" id="glind-${safe}" value="${(c.indirect_gl||'').replace(/"/g,'&quot;')}" placeholder="e.g. 4710">
+        </div>` : ''}
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:8px;">
           <input type="checkbox" id="admin-only-${safe}" ${c.admin_only ? 'checked' : ''}> Admin-only (hide from cardholders' category picker)
         </label>
@@ -3590,10 +3648,13 @@ async function saveReceiptCategoryGL(category) {
   const safe = category.replace(/[^a-zA-Z0-9]/g,'_');
   const input = document.getElementById(`gl-${safe}`);
   const adminOnlyBox = document.getElementById(`admin-only-${safe}`);
+  const indInput = document.getElementById(`glind-${safe}`); // only present once the indirect_gl column exists
   try {
+    const patch = {gl_account: input.value.trim() || null, admin_only: !!(adminOnlyBox && adminOnlyBox.checked), updated_at: new Date().toISOString()};
+    if (indInput) patch.indirect_gl = indInput.value.trim() || null;
     const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_gl_mapping?category=eq.${encodeURIComponent(category)}`, {
       method: 'PATCH', headers: rcptHeaders(),
-      body: JSON.stringify({gl_account: input.value || null, admin_only: !!(adminOnlyBox && adminOnlyBox.checked), updated_at: new Date().toISOString()})
+      body: JSON.stringify(patch)
     });
     if (!res.ok) throw new Error(await res.text());
     toast('Saved ✓');
@@ -3601,13 +3662,28 @@ async function saveReceiptCategoryGL(category) {
   } catch(e) { toast('Error saving — check connection'); }
 }
 
+// Turns a failed Supabase/PostgREST response into a plain-language reason, so
+// "check connection" isn't shown for problems that aren't the connection.
+async function explainDeleteFailure(res, what) {
+  let info = {};
+  try { info = await res.json(); } catch(e) {}
+  const code = info && info.code, status = res && res.status;
+  if (code === '42501' || status === 401 || status === 403)
+    return `The database doesn't allow deleting ${what} (permission). Ask Rick/Claude to enable delete for this table.`;
+  if (code === '23503')
+    return `Can't delete ${what} because other records still use it. For a category, tick "Admin-only" to hide it from the picker instead.`;
+  return `Couldn't delete ${what}${info && info.message ? ': ' + info.message : ''}`;
+}
+
 async function deleteReceiptCategory(category) {
   if (!confirm(`Delete category "${category}"? This will not delete past receipts.`)) return;
   try {
     const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_gl_mapping?category=eq.${encodeURIComponent(category)}`, {
-      method: 'DELETE', headers: rcptHeaders()
+      method: 'DELETE', headers: rcptHeaders({'Prefer':'return=representation'})
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) { toast(await explainDeleteFailure(res, 'this category')); return; }
+    const gone = await res.json().catch(() => []);
+    if (!Array.isArray(gone) || !gone.length) { toast('Nothing was deleted — the category was not found'); return; }
     toast('Deleted');
     loadReceiptCategoriesAdmin();
     loadReceiptCategories();
@@ -3617,16 +3693,18 @@ async function deleteReceiptCategory(category) {
 async function addReceiptCategory() {
   const name = document.getElementById('newcat-name').value.trim();
   const gl = document.getElementById('newcat-gl').value.trim();
+  const glInd = (document.getElementById('newcat-gl-indirect-input') || {value:''}).value.trim();
   if (!name) { toast('Enter a category name'); return; }
   try {
     const maxSort = _rcptCategories.reduce((m,c) => Math.max(m, c.sort_order||0), 0);
     const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_gl_mapping', {
       method: 'POST', headers: rcptHeaders({'Prefer':'return=minimal'}),
-      body: JSON.stringify({category:name, gl_account: gl || null, sort_order: maxSort + 10})
+      body: JSON.stringify(Object.assign({category:name, gl_account: gl || null, sort_order: maxSort + 10}, (_glHasIndirectCol && glInd) ? {indirect_gl: glInd} : {}))
     });
     if (!res.ok) throw new Error(await res.text());
     document.getElementById('newcat-name').value = '';
     document.getElementById('newcat-gl').value = '';
+    const _ni = document.getElementById('newcat-gl-indirect-input'); if (_ni) _ni.value = '';
     toast('Category added ✓');
     loadReceiptCategoriesAdmin();
     loadReceiptCategories();
@@ -4105,6 +4183,7 @@ async function deleteRecurringCharge(id) {
           <label class="field-label">Category</label>
           <select id="rcpt-category" onchange="onCategorySelect(this.value)"><option value="">— Select category —</option></select>
           <input type="hidden" id="rcpt-category-actual">
+          <div id="rcpt-gas-hint" style="display:none;font-size:11px;color:var(--text2);margin-top:4px;line-height:1.4;">If you enter a job, this goes to that job. With no job it is recorded as an indirect expense (job 90).</div>
         </div>
       </div>
       <div id="rcpt-meal-wizard" style="display:none;margin-top:12px;padding:12px;background:#F4F5F7;border-radius:10px;">
@@ -4333,6 +4412,7 @@ async function deleteRecurringCharge(id) {
   </div>
   <div class="scroll-body">
     <div style="font-size:12px;color:var(--text2);">Employees only pick the category name. The GL account here is used to build the export report — fill it in whenever it's convenient.</div>
+    <div id="rcpt-cat-indirect-note" style="display:none;font-size:12px;color:#7A5A12;background:#FFF8E6;border-radius:8px;padding:8px 10px;margin-top:8px;">The "GL with no job (indirect)" box isn't available yet. The database column hasn't been added. Ask Claude for the one-line SQL step.</div>
     <div id="rcpt-cat-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     <div class="card">
       <div class="field-label" style="margin-bottom:10px;">Add a category</div>
@@ -4340,7 +4420,10 @@ async function deleteRecurringCharge(id) {
         <input type="text" id="newcat-name" placeholder="Category name">
       </div>
       <div class="input-group" style="margin-bottom:8px;">
-        <input type="text" id="newcat-gl" placeholder="GL account number (optional)">
+        <input type="text" id="newcat-gl" placeholder="GL with a job (optional)">
+      </div>
+      <div class="input-group" style="margin-bottom:8px;" id="newcat-gl-indirect">
+        <input type="text" id="newcat-gl-indirect-input" placeholder="GL with no job — indirect, job 90 (optional)">
       </div>
       <button class="btn-primary" onclick="addReceiptCategory()">+ Add category</button>
     </div>
