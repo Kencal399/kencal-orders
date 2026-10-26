@@ -3302,6 +3302,59 @@ function exportReceiptsCSV() {
   toast(`Exported ${rows.length} receipt${rows.length!==1?'s':''} ✓`);
 }
 
+
+// ── ADD JOB SITE (ADMIN) ───────────────────────────────
+// Writes to the same kencal_locations table the Supply Order System's Admin >
+// Add Location writes to, so a site added here appears in every tool. It is a
+// plain insert (never an upsert): if the job number already exists nothing is
+// changed, which protects an existing site's Imperial accounts and drop-ship
+// setting from being overwritten.
+function openAddJobSite() {
+  ['addloc-job','addloc-name','addloc-imp','addloc-imp-rebill'].forEach(id => { document.getElementById(id).value = ''; });
+  const res = document.getElementById('addloc-result'); res.style.display = 'none'; res.textContent = '';
+  const btn = document.getElementById('addloc-btn'); btn.disabled = false; btn.textContent = '+ Add job site';
+  showScreen('s-receipts-addloc');
+}
+
+async function saveJobSite() {
+  if (!(state.supervisor && state.supervisor.receipts_admin)) { toast('Admins only'); return; }
+  const job = document.getElementById('addloc-job').value.trim();
+  const name = document.getElementById('addloc-name').value.trim().replace(/\s+/g, ' ');
+  const imp = document.getElementById('addloc-imp').value.trim();
+  const impRebill = document.getElementById('addloc-imp-rebill').value.trim();
+  const res = document.getElementById('addloc-result');
+  const showResult = (msg, ok) => { res.style.display = 'block'; res.style.color = ok ? 'var(--pass)' : 'var(--fail)'; res.textContent = msg; };
+  if (!job) { toast('Enter a job number'); return; }
+  if (!name) { toast('Enter the site name'); return; }
+  const btn = document.getElementById('addloc-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const existing = await sbFetch(`kencal_locations?job_number=eq.${encodeURIComponent(job)}&select=job_number,display_name,active`);
+    if (Array.isArray(existing) && existing.length) {
+      const e = existing[0];
+      showResult(`Job ${e.job_number} already exists as "${e.display_name || '—'}"${e.active === false ? ' (currently inactive)' : ''}. Nothing was changed.`, false);
+      return;
+    }
+    const r = await fetch(SUPABASE_URL + '/rest/v1/kencal_locations', {
+      method: 'POST', headers: rcptHeaders({'Prefer':'return=minimal'}),
+      body: JSON.stringify({ job_number: job, display_name: name, imperial_standard: imp || null, imperial_rebill: impRebill || null, dropship_eligible: false, active: true })
+    });
+    if (!r.ok) {
+      let info = {}; try { info = await r.json(); } catch(e) {}
+      showResult(info && info.code === '23505' ? `Job ${job} already exists. Nothing was changed.` : `Could not add the job site${info && info.message ? ': ' + info.message : ''}`, false);
+      return;
+    }
+    showResult(`Added: ${name} (Job ${job}). It is now available in Receipts, QC, Work Orders, Site Walk and Supply Orders.`, true);
+    toast('Job site added ✓');
+    ['addloc-job','addloc-name','addloc-imp','addloc-imp-rebill'].forEach(id => { document.getElementById(id).value = ''; });
+    loadReceiptLocations(); // refresh the Receipts job search right away
+  } catch(e) {
+    showResult('Error — check connection. Nothing was saved.', false);
+  } finally {
+    btn.disabled = false; btn.textContent = '+ Add job site';
+  }
+}
+
 // ── PDF REPORT (ADMIN) ──────────────────────────────────
 function openReceiptsPdfExport() {
   document.getElementById('rprt-from').value = '';
@@ -4321,10 +4374,50 @@ async function deleteRecurringCharge(id) {
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="loadRecurringChargesAdmin();showScreen('s-receipts-recurring')">🔁 Recurring Charges</button>
       <button class="btn-primary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openReceiptFormForAdmin()">+ Log a receipt</button>
     </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openAddJobSite()">📍 Add Job Site</button>
+    </div>
   </div>
   <div class="scroll-body" style="padding-top:8px;">
     <div style="font-size:13px;color:var(--text2);font-weight:600;" id="rcptlog-total"></div>
     <div id="rcpt-log-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     RECEIPTS - ADD JOB SITE (ADMIN)
+══════════════════════════════════════════ -->
+<div class="screen" id="s-receipts-addloc">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-receipts-log')">‹</button>
+    <div class="top-bar-title">Add Job Site</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <div class="card">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.5;">Adds a job site to the shared list used by Receipts, QC, Work Orders, Site Walk and Supply Orders. A site that already exists is never changed here. Assigning a site to a supervisor for supply orders is still done in the Supply Order System.</div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Job number</label>
+        <input type="text" id="addloc-job" placeholder="e.g. 12345" autocomplete="off">
+      </div>
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Site name</label>
+        <input type="text" id="addloc-name" placeholder="Name as it should appear in the lists" autocomplete="off">
+      </div>
+      <div class="input-row" style="margin-bottom:6px;">
+        <div class="input-group">
+          <label class="field-label">Imperial std</label>
+          <input type="text" id="addloc-imp" placeholder="Optional" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label class="field-label">Imperial rebill</label>
+          <input type="text" id="addloc-imp-rebill" placeholder="Optional" autocomplete="off">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);">The Imperial numbers are only for supply ordering. Leave them blank if you don't have them; the site works everywhere without them.</div>
+    </div>
+    <div id="addloc-result" style="display:none;font-size:13px;margin:0 2px 10px;line-height:1.5;"></div>
+    <button class="btn-primary" id="addloc-btn" onclick="saveJobSite()">+ Add job site</button>
   </div>
 </div>
 
