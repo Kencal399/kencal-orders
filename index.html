@@ -2443,10 +2443,14 @@ async function editProduct(job, itemId, currentDesc, currentUnit, currentType, c
   const allJobs = Object.keys(locationProducts).filter(j => locationProducts[j] && locationProducts[j][itemId]);
   const modal = document.createElement('div');
   modal.id = 'editProductModal';
-  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
   modal.innerHTML = `<div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">
     <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Edit Product</div>
-    <div style="font-size:12px;color:#888;margin-bottom:16px">Item # ${itemId}</div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Item #</label>
+      <input type="text" id="editProdItemId" value="${String(itemId).replace(/"/g, '&quot;')}" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box;font-family:monospace">
+      <div style="font-size:11px;color:#888;margin-top:4px">Changing the number updates every location and any orders not yet sent. Sent orders and the delivery log keep the old number.</div>
+    </div>
     <div class="form-group" style="margin-bottom:12px">
       <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Description</label>
       <input type="text" id="editProdDesc" value="${currentDesc}" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box">
@@ -2497,6 +2501,12 @@ async function saveEditProduct(job, itemId) {
   const updateAll = document.getElementById('editProdAllLocs').checked;
   const resultEl = document.getElementById('editProdResult');
   if (!newDesc) { alert('Description cannot be empty.'); return; }
+  const typedId = (document.getElementById('editProdItemId') ? document.getElementById('editProdItemId').value : itemId).trim();
+  if (typedId !== itemId) {
+    const renamed = await renameItemNumber(itemId, typedId);
+    if (!renamed) return;
+    itemId = typedId;
+  }
   const jobsToUpdate = updateAll
     ? Object.keys(locationProducts).filter(j => locationProducts[j] && locationProducts[j][itemId])
     : [job];
@@ -2525,7 +2535,123 @@ async function saveEditProduct(job, itemId) {
   } else {
     document.getElementById('editProductModal').remove();
     await loadAdminProducts();
+    const mm = document.getElementById('masterProductModal');
+    if (mm && mm.style.display === 'block') showMasterProductList();
   }
+}
+
+// Changes an item number everywhere it should change. Returns true when the catalog was updated.
+async function renameItemNumber(oldId, newId) {
+  if (!newId) { alert('The item number cannot be empty.'); return false; }
+  if (/["\\]/.test(newId)) { alert('The item number cannot contain quotation marks or backslashes.'); return false; }
+  const auth = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY };
+  const jsonHeaders = Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=representation' }, auth);
+  const OPEN = 'status=in.(pending,reviewed,approved)';
+  showLoading('Checking item number...');
+  let touched, loCount, newRows, oldRows;
+  try {
+    // 1. Catalog rows for either number (includes inactive rows)
+    const q = '"' + oldId + '","' + newId + '"';
+    const rows = await sbFetch('kencal_location_products?select=job_number,item_number,item_description&item_number=in.(' + encodeURIComponent(q) + ')&limit=5000');
+    if (!Array.isArray(rows)) throw new Error((rows && rows.message) || 'Could not read the catalog.');
+    oldRows = rows.filter(function(r) { return r.item_number === oldId; });
+    newRows = rows.filter(function(r) { return r.item_number === newId; });
+    if (oldRows.length === 0) { hideLoading(); alert('Could not find item "' + oldId + '" in the catalog.'); return false; }
+    const oldJobs = new Set(oldRows.map(function(r) { return String(r.job_number); }));
+    const clash = newRows.filter(function(r) { return oldJobs.has(String(r.job_number)); });
+    if (clash.length > 0) {
+      hideLoading();
+      const names = clash.slice(0, 8).map(function(r) { return LOCATION_NAMES[r.job_number] || r.job_number; }).join(', ');
+      alert('"' + newId + '" already exists at ' + clash.length + ' location(s) that also have "' + oldId + '" (' + names + (clash.length > 8 ? ', ...' : '') +
+        '). Remove one of the two from those locations first, then try again.');
+      return false;
+    }
+    // 2. Orders not yet sent that contain the old number
+    const open = await sbFetch('kencal_orders?select=id,order_ref,location_name,status,items&' + OPEN + '&limit=2000');
+    if (!Array.isArray(open)) throw new Error((open && open.message) || 'Could not read open orders.');
+    const has = function(o, k) { return !!o.items && Object.prototype.hasOwnProperty.call(o.items, k); };
+    touched = open.filter(function(o) { return has(o, oldId); });
+    const both = touched.filter(function(o) { return has(o, newId); });
+    if (both.length > 0) {
+      hideLoading();
+      alert(both.length + ' open order(s) contain both "' + oldId + '" and "' + newId + '" (' +
+        both.slice(0, 6).map(function(o) { return o.order_ref || o.id; }).join(', ') + '). Remove one of the two lines from those orders first, then try again.');
+      return false;
+    }
+    // 3. Leftover stock notes
+    const lo = await sbFetch('kencal_leftover_stock?select=id&item_number=eq.' + encodeURIComponent(oldId));
+    loCount = Array.isArray(lo) ? lo.length : 0;
+  } catch (e) {
+    hideLoading();
+    alert('Nothing was changed. Could not check the item number: ' + e.message);
+    return false;
+  }
+  hideLoading();
+
+  const otherLocs = newRows.length;
+  const msg = 'Change item number "' + oldId + '" to "' + newId + '"?\n\n' +
+    '- Catalog: ' + oldRows.length + ' location(s) will switch to the new number.\n' +
+    (otherLocs > 0 ? '- "' + newId + '" already exists at ' + otherLocs + ' other location(s), so they will share one number.\n' : '') +
+    '- Orders not yet sent (pending, reviewed, approved): ' + touched.length + ' will use the new number.\n' +
+    '- Leftover stock notes: ' + loCount + ' will move to the new number.\n' +
+    '- Sent and archived orders and the delivery log keep the old number as history.\n' +
+    '- Special resale pricing is stored in the program file and does not change automatically.';
+  if (!window.confirm(msg)) return false;
+
+  showLoading('Changing item number...');
+  // Catalog first: one request, all locations
+  const r = await fetch(SUPABASE_URL + '/rest/v1/kencal_location_products?item_number=eq.' + encodeURIComponent(oldId) + '&select=job_number',
+    { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ item_number: newId }) });
+  if (!r.ok) {
+    let why = 'HTTP ' + r.status;
+    try { const e = await r.json(); if (e && e.message) why = e.message; } catch (x) {}
+    hideLoading();
+    alert('Nothing was changed. The catalog update was refused: ' + why);
+    return false;
+  }
+  Object.keys(locationProducts).forEach(function(job) {
+    if (locationProducts[job] && locationProducts[job][oldId]) {
+      locationProducts[job][newId] = locationProducts[job][oldId];
+      delete locationProducts[job][oldId];
+    }
+  });
+
+  // Orders not yet sent: rename the line, keep its position, leave everything else alone
+  const failedOrders = [], skippedOrders = [];
+  for (const o of touched) {
+    const items = {};
+    Object.keys(o.items).forEach(function(k) { items[k === oldId ? newId : k] = o.items[k]; });
+    const ref = o.order_ref || o.id;
+    try {
+      const rr = await fetch(SUPABASE_URL + '/rest/v1/kencal_orders?id=eq.' + o.id + '&' + OPEN + '&select=id',
+        { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ items: items, updated_at: new Date().toISOString() }) });
+      if (!rr.ok) { failedOrders.push(ref); continue; }
+      const done = await rr.json();
+      if (!Array.isArray(done) || done.length === 0) skippedOrders.push(ref);
+    } catch (e) { failedOrders.push(ref); }
+  }
+
+  // Leftover stock
+  let leftoverFailed = false;
+  if (loCount > 0) {
+    try {
+      const lr = await fetch(SUPABASE_URL + '/rest/v1/kencal_leftover_stock?item_number=eq.' + encodeURIComponent(oldId),
+        { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ item_number: newId }) });
+      leftoverFailed = !lr.ok;
+    } catch (e) { leftoverFailed = true; }
+  }
+  hideLoading();
+
+  if (typeof buildWarehouseItemIndex === 'function') buildWarehouseItemIndex();
+  try { await loadMaryOrders(); } catch (e) {}
+
+  let summary = 'Item number changed to "' + newId + '" at ' + oldRows.length + ' location(s).';
+  summary += '\n' + (touched.length - failedOrders.length - skippedOrders.length) + ' open order(s) updated.';
+  if (skippedOrders.length) summary += '\nSkipped (no longer open): ' + skippedOrders.join(', ') + '.';
+  if (failedOrders.length) summary += '\nCould NOT update: ' + failedOrders.join(', ') + '. Those orders still show "' + oldId + '".';
+  if (leftoverFailed) summary += '\nLeftover stock notes could not be moved.';
+  alert(summary);
+  return true;
 }
 
 function showMasterProductList() {
@@ -2534,7 +2660,7 @@ function showMasterProductList() {
   Object.entries(locationProducts).forEach(([job, products]) => {
     const locName = LOCATION_NAMES[job] || job;
     Object.entries(products).forEach(([id, info]) => {
-      if (!master[id]) master[id] = { desc: info.desc, unit: info.unit, locations: [] };
+      if (!master[id]) master[id] = { desc: info.desc, unit: info.unit, type: info.type, vendor: info.vendor, caseQty: info.caseQty, job: job, locations: [] };
       master[id].locations.push(locName);
     });
   });
@@ -2564,10 +2690,16 @@ function renderMasterProducts(data) {
     const editBtn = document.createElement('button');
     editBtn.className = 'btn btn-outline btn-xs';
     editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => editProductGlobal(id, info));
+    editBtn.addEventListener('click', () => editProductMaster(id, info));
     tr.querySelector('td:last-child').appendChild(editBtn);
     tbody.appendChild(tr);
   });
+}
+
+async function editProductMaster(id, info) {
+  await editProduct(info.job, id, info.desc, info.unit, info.type, info.vendor || 'Imperial', info.caseQty || null);
+  const cb = document.getElementById('editProdAllLocs');
+  if (cb) cb.checked = true;
 }
 
 async function editProductGlobal(itemId, info) {
