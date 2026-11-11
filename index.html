@@ -449,7 +449,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script></head><body><div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"><div class="spinner"></div><p id="loadingMsg">Loading...</p></div></div><div id="loginScreen"><div class="login-card"><h1>Kencal <span>Supply</span></h1><p>Order Management System</p><div class="login-group"><label>Who are you?</label><select id="loginUser"><option value="">-- Select your name --</option><option value="rick">Rick Storey</option><option value="mary">Mary Cintron</option><option value="santiago_wh">Santiago Alzate (Warehouse)</option><optgroup label="Supervisors"><option value="sup_Gustavo">Gustavo</option><option value="sup_Damian">Damian</option><option value="sup_Santiago">Santiago Alzate</option><option value="sup_Hector 1.0">Hector 1.0</option><option value="sup_Hector 2.0">Hector 2.0</option><option value="sup_Pablo">Pablo</option><option value="sup_Jorge">Jorge</option></optgroup></select></div><div class="login-group" id="passwordGroup" style="display:none"><label>Password</label><input type="password" id="loginPassword" placeholder="Enter password"></div><button class="btn-login" onclick="doLogin()">Sign In</button><div class="login-error" id="loginError">Incorrect password. Please try again.</div></div></div><div id="mainApp" style="display:none"><header class="app-header"><div class="logo">Kencal <span>Supply</span></div><div class="header-user"><span>Signed in as <strong id="headerUserName"></strong></span><button class="btn-logout" onclick="doLogout()">Sign Out</button></div></header><div class="tab-bar" id="tabBar"></div><div class="tab-content" id="tab-supervisor"><div class="section-title">Submit Supply Order</div><div class="card"><div class="card-title"> Order Details</div><div class="form-row"><div class="form-group"><label>Your Name</label><select id="supName" onchange="onSupNameChange()"><option value="">-- Select --</option></select></div><div class="form-group"><label>Location</label><select id="supLocation" onchange="onSupLocationChange()"><option value="">-- Select name first --</option></select></div><div id="missingLocationSection" class="hidden"><div style="background:#fff8e1;border:1.5px solid #f0b429;border-radius:6px;padding:12px 14px;margin-top:8px"><div style="font-size:13px;font-weight:600;color:#7a5a00;margin-bottom:8px"> Request a missing location</div><div style="display:flex;flex-direction:column;gap:8px"><input type="text" id="missingLocName" placeholder="Location name *" style="padding:8px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px"><input type="text" id="missingLocAddress" placeholder="Address" style="padding:8px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px"><input type="text" id="missingLocJob" placeholder="Job # (if known)" style="padding:8px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px"><input type="text" id="missingLocNote" placeholder="Any other details..." style="padding:8px 10px;border:1.5px solid #ccc;border-radius:6px;font-size:13px"><div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="submitMissingLocationRequest()" style="flex:1">Send Request to Admin</button><button class="btn btn-outline" onclick="cancelMissingLocation()">Cancel</button></div><div id="missingLocConfirm" style="display:none;color:#1a6e2a;font-size:12px;font-weight:600"> Request sent! Rick or Mary will add this location shortly.</div></div></div></div></div><div id="supJobInfo" class="hidden"><div class="alert alert-info" id="supJobBadge"></div></div></div><div id="supOrderArea" class="hidden"><div class="card"><div class="card-title"> Select Items</div><div id="supCatalogForm"></div></div><div class="sticky-bar" id="supStickyBar"><div class="cart-info">Items selected: <span id="supItemCount">0</span></div><button class="btn btn-gold" onclick="reviewOrder()">Review Order -></button></div><div style="height:60px"></div></div><div id="supReviewArea" class="hidden"><div class="card"><div class="card-title"> Review Your Order</div><div id="supReviewInfo" class="alert alert-info mb-8"></div><table class="review-table"><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Each/Case</th></tr></thead><tbody id="supReviewBody"></tbody></table><div class="divider"></div><div style="margin-bottom:12px"><label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px">Notes for Mary (optional)</label><textarea id="supOrderNotes" placeholder="e.g. Please deliver Tuesday, short on paper towels, urgent items marked..." style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:8px;font-size:13px;resize:vertical;min-height:72px;box-sizing:border-box;font-family:inherit"></textarea></div><div class="flex-gap mt-8"><button class="btn btn-outline" onclick="backToOrder()"><- Edit Order</button><button class="btn btn-outline" onclick="printSupOrder()">Print Order</button><button class="btn btn-green" onclick="submitOrder()">OK Submit Order</button></div></div></div><div id="supConfirmArea" class="hidden"><div class="card text-center"><div style="font-size:48px;margin-bottom:12px"></div><div class="section-title" style="justify-content:center">Order Submitted!</div><p style="color:var(--gray-dark);margin-bottom:20px">Your order has been received by Mary Cintron for review.</p><button class="btn btn-primary" onclick="resetSupForm()">Submit Another Order</button></div></div></div><div class="tab-content" id="tab-sup-history"><div class="section-title">My Order History</div><div class="filter-bar"><select id="supHistoryStatus" onchange="loadSupHistory()"><option value="">All Orders</option><option value="pending">Pending</option><option value="reviewed">Reviewed</option><option value="approved">Approved</option><option value="sent">Sent to Imperial</option></select><input type="date" id="supHistoryFrom" onchange="loadSupHistory()" placeholder="From"><input type="date" id="supHistoryTo" onchange="loadSupHistory()" placeholder="To"><button class="btn btn-primary btn-sm" onclick="loadSupHistory()">Refresh</button></div><div id="supHistoryList"><div class="empty-state"><div class="icon"></div><p>Click Refresh to load your orders.</p></div></div></div><div class="tab-content" id="tab-mary"><div class="section-title">
  Inventory Manager -- Order Review
- <span class="sub" id="maryPendingCount"></span></div><div class="flex-gap mb-8"><button class="btn btn-primary btn-sm" onclick="loadMaryOrders()"> Refresh</button><button class="btn btn-gold btn-sm" onclick="showCreateOrder()">+ Create Order</button></div><div class="filter-bar"><select id="maryStatusFilter" onchange="filterMaryOrders()"><option value="active">Pending & Reviewed</option><option value="">All Statuses</option><option value="pending">Pending</option><option value="reviewed">Reviewed</option><option value="approved">Approved</option><option value="sent">Sent to Imperial</option></select><select id="marySupervisorFilter" onchange="filterMaryOrders()"><option value="">All Supervisors</option></select><button class="btn btn-outline btn-sm" onclick="switchTab('history')"> View History</button><button class="btn btn-danger btn-sm" onclick="archiveSentOrders()"> Archive Sent</button><button class="btn btn-green btn-sm" onclick="exportProductsCSVForMary()">Export Products</button></div><div id="maryOrdersList"></div><div class="card" id="stockAccumulatorCard" style="display:none"><div class="card-title">From Stock Accumulator
+ <span class="sub" id="maryPendingCount"></span></div><div class="flex-gap mb-8"><button class="btn btn-primary btn-sm" onclick="loadMaryOrders()"> Refresh</button><button class="btn btn-gold btn-sm" onclick="showCreateOrder()">+ Create Order</button></div><div class="filter-bar"><select id="maryStatusFilter" onchange="filterMaryOrders()"><option value="active">Pending & Reviewed</option><option value="">All Statuses</option><option value="pending">Pending</option><option value="reviewed">Reviewed</option><option value="approved">Approved</option><option value="sent">Sent to Imperial</option><option value="archived">Archived</option></select><select id="marySupervisorFilter" onchange="filterMaryOrders()"><option value="">All Supervisors</option></select><button class="btn btn-outline btn-sm" onclick="switchTab('history')"> View History</button><button class="btn btn-danger btn-sm" onclick="archiveSentOrders()"> Archive Sent</button><button class="btn btn-green btn-sm" onclick="exportProductsCSVForMary()">Export Products</button></div><div id="maryOrdersList"></div><div class="card" id="stockAccumulatorCard" style="display:none"><div class="card-title">From Stock Accumulator
  <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="buildStockAccumulator()">Refresh</button></div><div style="font-size:12px;color:#666;margin-bottom:12px">Items marked "From Stock" across current orders.</div><div id="stockAccumulatorBody"></div></div><div id="createOrderPanel" class="hidden"><div class="card"><div class="card-title">+ Create Order Manually</div><div class="form-row"><div class="form-group"><label>Submitted By</label><input type="text" id="createOrderBy" placeholder="Name or 'Text request'"></div><div class="form-group"><label>Location</label><select id="createOrderLocation" onchange="loadCreateCatalog()"><option value="">-- Select location --</option></select></div></div><div id="createCatalogArea" class="hidden"><div id="createCatalogForm"></div><div class="flex-gap mt-12"><button class="btn btn-outline" onclick="cancelCreateOrder()">Cancel</button><button class="btn btn-green" onclick="submitCreateOrder()">Submit Order</button></div></div></div></div></div><div class="tab-content" id="tab-history"><div class="section-title">Order History</div><div class="filter-bar"><select id="historyViewBy" onchange="renderHistory()"><option value="date">View by Date</option><option value="location">View by Location</option></select><input type="date" id="historyDateFrom" onchange="renderHistory()" placeholder="From"><input type="date" id="historyDateTo" onchange="renderHistory()" placeholder="To"><select id="historyLocation" onchange="renderHistory()"><option value="">All Locations</option></select><button class="btn btn-primary btn-sm" onclick="loadHistory()"> Refresh</button></div><div id="historyList"></div></div><div class="tab-content" id="tab-distribution"><div class="section-title">Warehouse Distribution Log
  <span class="sub">Log supplies distributed from warehouse stock</span></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-outline btn-sm" onclick="document.getElementById('distPendingSection').scrollIntoView({behavior:'smooth'})">Pending Deliveries</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('distStockLogSection').scrollIntoView({behavior:'smooth'})">Log Stock Delivery</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('distLeftoverSection').scrollIntoView({behavior:'smooth'})">Leftover Stock</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('distLogSection').scrollIntoView({behavior:'smooth'})">Stock Distribution Log</button></div><div class="card" id="distPendingSection"><div class="card-title">Pending Deliveries
  <div class="flex-gap" style="margin-left:auto"><button class="btn btn-primary btn-sm" onclick="loadDeliverySheet()">Refresh</button><button class="btn btn-green btn-sm" onclick="printDeliverySheet()">Print Sheet</button></div></div><div style="font-size:12px;color:#666;margin-bottom:12px">All approved warehouse orders ready to be distributed. Use this as your delivery guide.</div><div id="deliverySheetList"><div class="empty-state"><div class="icon"></div><p>Click Refresh to load pending deliveries.</p></div></div></div><div class="card" id="distStockLogSection"><div class="card-title">+ Log Stock Delivery</div><div style="font-size:12px;color:#666;margin-bottom:12px">Record items delivered from warehouse stock (not from a supervisor order). Mary uses this for WinTeam job costing.</div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="distDate" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"></div><div class="form-group"><label>Destination Type</label><select id="distType" onchange="onDistTypeChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"><option value="">-- Select type --</option><option value="jobsite">Job Site (Construction / Day Job)</option><option value="supervisor">Supervisor / Contract Location</option></select></div></div><div id="distJobSiteArea" class="hidden"><div class="form-group mb-8"><label>Search Job / Location</label><input type="text" id="distJobSearch" placeholder="Type job name, address, or job number..." oninput="searchDistJobs(this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"><div id="distJobResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div></div><div id="distSelectedJob" class="hidden"><div class="alert alert-info mb-8" id="distSelectedJobBadge"></div></div><div class="form-group mb-8"><label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label><input type="text" id="distCustomLocation" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px" oninput="if(this.value.trim().length>2){distSelectedJob={job:null,name:this.value.trim(),pending:true};document.getElementById('distItemArea').classList.remove('hidden');}else{document.getElementById('distItemArea').classList.add('hidden');}"></div></div><div id="distSupervisorArea" class="hidden"><div class="form-row"><div class="form-group"><label>Supervisor</label><select id="distSupervisorSelect" onchange="onDistSupervisorChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"><option value="">-- Select supervisor --</option></select></div><div class="form-group"><label>Location</label><select id="distSupervisorLocation" onchange="onDistSupervisorLocationChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"><option value="">-- Select supervisor first --</option></select></div></div><div id="distSupLocationBadge" class="hidden"><div class="alert alert-info mb-8" id="distSupLocationBadgeInner"></div></div><div class="form-group mb-8"><label style="font-size:12px">Location not listed? <span style="font-weight:400;color:#888">Type it in:</span></label><input type="text" id="distCustomLocationSup" placeholder="Enter custom location name" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px" oninput="if(this.value.trim().length>2){document.getElementById('distItemArea').classList.remove('hidden');}"></div></div><div id="distItemArea" class="hidden"><div class="divider"></div><div class="card-title" style="font-size:13px;margin-bottom:10px">Add Items</div><div class="form-row"><div class="form-group"><label>Search Item</label><input type="text" id="distItemSearch" placeholder="Type item number or description..." oninput="searchDistItems(this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"><div id="distItemResults" style="border:1.5px solid var(--gray-light);border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;display:none;background:white;position:relative;z-index:50"></div></div><div class="form-group"><label>Selected Item</label><div id="distSelectedItemBadge" style="padding:10px 12px;background:var(--off-white);border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;color:var(--gray-dark);min-height:42px">No item selected</div></div></div><div class="form-row"><div class="form-group"><label>Quantity</label><input type="number" id="distQty" min="0.5" step="0.5" placeholder="e.g. 3" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"></div><div class="form-group"><label>Unit</label><select id="distUnit" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"><option value="Each">Each</option><option value="Case">Case</option><option value="Box">Box</option><option value="Gallon">Gallon</option><option value="Roll">Roll</option><option value="Bag">Bag</option><option value="Pair">Pair</option><option value="Bottle">Bottle</option></select></div></div><div class="form-group mb-8"><label>Notes (optional)</label><input type="text" id="distItemNotes" placeholder="Any additional info" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:14px"></div><button class="btn btn-primary btn-sm" onclick="addItemToCart()">+ Add to List</button><div id="distCart" class="hidden" style="margin-top:16px"><div class="card-title" style="font-size:13px;margin-bottom:8px">Items to Log <span class="count-badge" id="distCartCount">0</span></div><table class="review-table" style="margin-bottom:12px"><thead><tr><th>Item #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Notes</th><th></th></tr></thead><tbody id="distCartBody"></tbody></table><div class="flex-gap"><button class="btn btn-green" onclick="logDistribution()">Submit Stock Log</button><button class="btn btn-outline" onclick="resetDistForm()">Clear All</button></div></div></div></div><div class="card" id="distLeftoverSection"><div class="card-title">Leftover Stock
@@ -1348,8 +1348,9 @@ function filterMaryOrders() {
   const status = document.getElementById('maryStatusFilter').value;
   const sup = document.getElementById('marySupervisorFilter').value;
   let filtered = maryOrders;
-  if (status === 'active') filtered = filtered.filter(o => o.status !== 'sent' && o.status !== 'approved');
+  if (status === 'active') filtered = filtered.filter(o => o.status !== 'sent' && o.status !== 'approved' && o.status !== 'archived');
   else if (status) filtered = filtered.filter(o => o.status === status);
+  else filtered = filtered.filter(o => o.status !== 'archived');
   if (sup) filtered = filtered.filter(o => o.supervisor === sup);
   renderMaryOrders(filtered);
 }
@@ -1505,7 +1506,7 @@ function renderOrderCard(order, view) {
   const dateStr = new Date(order.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const statusBadge = `<span class="badge badge-${order.status}">${order.status}</span>`;
   const dsBadge = order.is_dropship ? `<span class="badge badge-dropship">Drop Ship</span>` : `<span class="badge badge-warehouse">Warehouse</span>`;
-  const isSent = order.status === 'sent';
+  const isSent = order.status === 'sent' || order.status === 'archived';
   const cardStyle = isSent ? 'opacity:0.45;filter:grayscale(0.3)' : '';
 
   const hasRebill = IMPERIAL_JOB_MAP[order.job_number] && IMPERIAL_JOB_MAP[order.job_number].rebill;
@@ -3968,17 +3969,140 @@ function exportDistributionReport() {
   URL.revokeObjectURL(url);
 }
 
-async function archiveSentOrders() {
-  const sentOrders = maryOrders.filter(o => o.status === 'sent');
-  if (sentOrders.length === 0) { alert('No sent orders to archive.'); return; }
-  if (!confirm(`Archive ${sentOrders.length} sent order(s)? They will move to History and be removed from the main view.`)) return;
-  showLoading('Archiving...');
-  for (const order of sentOrders) {
-    await sb.update('kencal_orders', {status: 'archived', updated_at: new Date().toISOString()}, {id: order.id});
+function localDateStr(iso) {
+  const d = new Date(iso);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Sent orders whose order date falls between the two dates (inclusive)
+function getArchiveCandidates(fromStr, toStr) {
+  return (maryOrders || []).filter(function(o) {
+    if (o.status !== 'sent') return false;
+    const d = localDateStr(o.created_at);
+    return d >= fromStr && d <= toStr;
+  });
+}
+
+// Archives in batches. The status=eq.sent guard means nothing that changed
+// status in the meantime gets archived by mistake.
+async function archiveOrdersByIds(ids) {
+  let archived = 0;
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const url = SUPABASE_URL + '/rest/v1/kencal_orders?id=in.(' + batch.join(',') + ')&status=eq.sent&select=id';
+    const r = await fetch(url, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'archived', updated_at: new Date().toISOString() })
+    });
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { const e = await r.json(); if (e && e.message) msg = e.message; } catch (x) {}
+      return { archived: archived, error: msg };
+    }
+    const rows = await r.json();
+    archived += Array.isArray(rows) ? rows.length : 0;
   }
-  await loadMaryOrders();
-  hideLoading();
-  alert(`${sentOrders.length} order(s) archived successfully.`);
+  return { archived: archived, error: null };
+}
+
+function closeArchiveModal() {
+  const m = document.getElementById('archiveModal');
+  if (m) m.remove();
+  window._archivePendingIds = [];
+}
+
+function archiveEl(tag, css, text) {
+  const e = document.createElement(tag);
+  if (css) e.style.cssText = css;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function archiveSentOrders() { showArchiveModal(); }
+
+function showArchiveModal() {
+  const old = document.getElementById('archiveModal');
+  if (old) old.remove();
+  window._archivePendingIds = [];
+  const totalSent = (maryOrders || []).filter(function(o) { return o.status === 'sent'; }).length;
+
+  const modal = archiveEl('div', 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center');
+  modal.id = 'archiveModal';
+  const box = archiveEl('div', 'background:white;border-radius:12px;padding:24px;width:90%;max-width:460px;box-shadow:0 8px 32px rgba(0,0,0,0.2)');
+  box.appendChild(archiveEl('div', 'font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px', 'Archive Sent Orders'));
+  box.appendChild(archiveEl('div', 'font-size:12px;color:#666;margin-bottom:14px',
+    'Moves sent orders placed between these dates into History. Nothing is deleted. There are ' + totalSent + ' sent orders in total.'));
+
+  const inputCss = 'width:100%;padding:8px;border:1.5px solid var(--gray-light);border-radius:6px;font-size:13px;box-sizing:border-box';
+  const labelCss = 'font-size:12px;font-weight:600;display:block;margin-bottom:4px';
+  const row = archiveEl('div', 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px');
+  const fromWrap = archiveEl('div');
+  fromWrap.appendChild(archiveEl('label', labelCss, 'From (order date)'));
+  const fromEl = archiveEl('input', inputCss); fromEl.type = 'date'; fromEl.id = 'archiveFrom';
+  fromWrap.appendChild(fromEl);
+  const toWrap = archiveEl('div');
+  toWrap.appendChild(archiveEl('label', labelCss, 'To (order date)'));
+  const toEl = archiveEl('input', inputCss); toEl.type = 'date'; toEl.id = 'archiveTo';
+  toWrap.appendChild(toEl);
+  row.appendChild(fromWrap); row.appendChild(toWrap);
+  box.appendChild(row);
+
+  const preview = archiveEl('div', 'font-size:13px;color:#555;margin-bottom:8px;min-height:20px', 'Choose both dates to see how many orders will be archived.');
+  preview.id = 'archivePreview';
+  const warn = archiveEl('div', 'display:none;font-size:12px;color:#7a5a00;background:#fffbea;border:1px solid #f0d060;border-radius:6px;padding:8px 10px;margin-bottom:12px');
+  warn.id = 'archiveWarning';
+  box.appendChild(preview); box.appendChild(warn);
+
+  const btnRow = archiveEl('div', 'display:flex;gap:8px');
+  const confirmBtn = archiveEl('button', 'flex:1', 'Archive'); confirmBtn.className = 'btn btn-green'; confirmBtn.disabled = true; confirmBtn.id = 'archiveConfirmBtn';
+  const cancelBtn = archiveEl('button', 'flex:1', 'Cancel'); cancelBtn.className = 'btn btn-outline'; cancelBtn.id = 'archiveCancelBtn';
+  btnRow.appendChild(confirmBtn); btnRow.appendChild(cancelBtn);
+  box.appendChild(btnRow);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+
+  function refresh() {
+    const from = fromEl.value, to = toEl.value;
+    window._archivePendingIds = [];
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Archive';
+    warn.style.display = 'none';
+    if (!from || !to) { preview.textContent = 'Choose both dates to see how many orders will be archived.'; return; }
+    if (from > to) { preview.textContent = 'The From date must be on or before the To date.'; return; }
+    const list = getArchiveCandidates(from, to);
+    if (list.length === 0) { preview.textContent = 'No sent orders were placed between these dates.'; return; }
+    const warehouse = list.filter(function(o) { return !o.is_dropship; }).length;
+    preview.textContent = list.length + ' sent order' + (list.length === 1 ? '' : 's') + ' will be archived.';
+    if (warehouse > 0) {
+      warn.textContent = warehouse + ' of these ' + (warehouse === 1 ? 'is a warehouse delivery' : 'are warehouse deliveries') +
+        '. Archiving removes them from the Pending Deliveries list on the Distribution tab, so make sure they have been delivered.';
+      warn.style.display = 'block';
+    }
+    window._archivePendingIds = list.map(function(o) { return o.id; });
+    confirmBtn.textContent = 'Archive ' + list.length + ' Order' + (list.length === 1 ? '' : 's');
+    confirmBtn.disabled = false;
+  }
+  fromEl.addEventListener('change', refresh);
+  toEl.addEventListener('change', refresh);
+  cancelBtn.addEventListener('click', closeArchiveModal);
+  confirmBtn.addEventListener('click', async function() {
+    const ids = (window._archivePendingIds || []).slice();
+    if (ids.length === 0) return;
+    confirmBtn.disabled = true; cancelBtn.disabled = true;
+    showLoading('Archiving ' + ids.length + ' orders...');
+    const res = await archiveOrdersByIds(ids);
+    hideLoading();
+    closeArchiveModal();
+    await loadMaryOrders();
+    if (res.error) {
+      alert('Archived ' + res.archived + ' of ' + ids.length + ' orders before an error stopped the rest: ' + res.error);
+    } else if (res.archived < ids.length) {
+      alert('Archived ' + res.archived + ' of ' + ids.length + ' orders. The others changed status while this was running.');
+    } else {
+      alert(res.archived + ' order' + (res.archived === 1 ? '' : 's') + ' archived. They are now in History.');
+    }
+  });
 }
 
 let historyOrders = [];
