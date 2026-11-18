@@ -2367,7 +2367,7 @@ let _rcptSplitLines = [];
 function blankSplitLine() { return {locId:'', locName:'', jobNumber:'', needsMatch:'', pretax:''}; }
 
 function onSplitToggle(checked) {
-  document.getElementById('rcpt-job-single-group').style.display = checked ? 'none' : 'block';
+  refreshJobGroup();
   document.getElementById('rcpt-split-section').style.display = checked ? 'block' : 'none';
   document.getElementById('rcpt-amount-label').textContent = checked ? 'Total amount charged ($)' : 'Amount ($)';
   // Drop-shipment applies to a single job's line, entered on the WinTeam
@@ -2507,14 +2507,80 @@ function updateSplitCalc() {
 // Meal/entertainment GL lines — never shown directly in the picker. A
 // cardholder answers a few plain questions (onCategorySelect -> the meal
 // wizard) and this maps their answers to the correct one automatically.
+// Meal category names the wizard can produce (Rick's rules, 2026-11-19).
+const MEAL_CAT = {
+  ENTERTAINMENT: 'Entertainment (Non-Deductible)',
+  EXISTING:  'Meals - Existing Customer',
+  POTENTIAL: 'Potential Business Meals (50% Deductible)',
+  NETWORK:   'Meals - Networking Event',
+  OFFICE:    'Office Celebration Meals (100% Deductible)',
+  WORKSITE:  'Nondeductible Meals',
+  OVERNIGHT: 'Meals - Overnight Trip',
+  PERSONAL:  'Nondeductible Meals - Personal'
+};
 const MEAL_WIZARD_CATEGORIES = [
-  'Meals - Direct (Job Cost)',
-  'Potential Business Meals (50% Deductible)',
-  'Meals Expense (50% Deductible)',
-  'Office Celebration Meals (100% Deductible)',
-  'Entertainment (Non-Deductible)',
-  'Nondeductible Meals'
+  'Meals - Direct (Job Cost)',          // retired from the wizard; kept so old receipts stay hidden from the picker
+  'Meals Expense (50% Deductible)',     // retired from the wizard; kept for old receipts
+  MEAL_CAT.ENTERTAINMENT, MEAL_CAT.EXISTING, MEAL_CAT.POTENTIAL, MEAL_CAT.NETWORK,
+  MEAL_CAT.OFFICE, MEAL_CAT.WORKSITE, MEAL_CAT.OVERNIGHT, MEAL_CAT.PERSONAL
 ];
+// The new posting rules apply only to receipts submitted on/after this local date (Rick, 2026-11-19).
+const RULES_CUTOFF_YMD = '2026-10-26';
+// Categories where no job is asked: always their own GL with job 90.
+const NO_JOB_ASKED_CATS = [MEAL_CAT.POTENTIAL, MEAL_CAT.NETWORK, MEAL_CAT.OFFICE, MEAL_CAT.OVERNIGHT, MEAL_CAT.PERSONAL];
+// Categories that need a "who was there and why" note (IRS substantiation).
+const NOTE_REQUIRED_CATS = [MEAL_CAT.EXISTING, MEAL_CAT.POTENTIAL, MEAL_CAT.NETWORK];
+let _rcptEditCreatedAt = null;   // created_at of the receipt being edited (null for a new one)
+let _rcptHideJob = false;
+const _DEFAULT_JOB_HINT = 'If you enter a job, this goes to that job. With no job it is recorded as an indirect expense (job 90).';
+
+function ymdOfTimestamp(ts) {
+  const d = ts ? new Date(ts) : new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+// True when this receipt follows the 2026-10-26 posting rules (older ones keep the old behavior).
+function usesNewPostingRules(r) { return ymdOfTimestamp(r && r.created_at) >= RULES_CUTOFF_YMD; }
+// Same test for the receipt currently open in the form (a new receipt is always "new rules").
+function formUsesNewRules() { return !_rcptEditCreatedAt || ymdOfTimestamp(_rcptEditCreatedAt) >= RULES_CUTOFF_YMD; }
+function noteRequiredNow(category) { return NOTE_REQUIRED_CATS.includes(category) && formUsesNewRules(); }
+function refreshJobGroup() {
+  const split = document.getElementById('rcpt-split-toggle');
+  const grp = document.getElementById('rcpt-job-single-group');
+  if (grp) grp.style.display = ((split && split.checked) || _rcptHideJob) ? 'none' : 'block';
+}
+// Adjusts the form for the chosen category: hides the job box where no job is asked,
+// shows the right hint, and makes the notes box required where it must be.
+function updateCategoryFormRules(category) {
+  const newRules = formUsesNewRules();
+  _rcptHideJob = newRules && NO_JOB_ASKED_CATS.includes(category);
+  refreshJobGroup();
+  const gh = document.getElementById('rcpt-gas-hint');
+  if (gh) {
+    if (_rcptHideJob) { gh.textContent = 'No job needed. This is recorded as an overhead expense (job 90).'; gh.style.display = 'block'; }
+    else if (newRules && category === MEAL_CAT.EXISTING) { gh.textContent = "Enter the job if you know it. If you don't know the job, leave it blank. Mary will follow up and add it."; gh.style.display = 'block'; }
+    else if (category && hasIndirectRule(category)) { gh.textContent = _DEFAULT_JOB_HINT; gh.style.display = 'block'; }
+    else gh.style.display = 'none';
+  }
+  const lbl = document.getElementById('rcpt-notes-label'), ta = document.getElementById('rcpt-notes');
+  if (lbl && ta) {
+    if (noteRequiredNow(category)) {
+      lbl.innerHTML = 'Who was there and why? <span style="color:var(--fail);font-weight:400;">* required</span>';
+      ta.placeholder = 'Names of everyone at the meal and the business reason…';
+    } else {
+      lbl.innerHTML = 'Notes <span style="color:var(--text2);font-weight:400;">(optional)</span>';
+      ta.placeholder = 'What was this for?…';
+    }
+  }
+}
+// Applies the job rules to a payload just before saving (new-rules receipts only).
+function applyCategoryJobRules(p, category) {
+  if (!formUsesNewRules()) return;
+  if (NO_JOB_ASKED_CATS.includes(category)) {
+    p.job_number = null; p.location_id = null; p.location_name = null; p.needs_job_match = false;
+  } else if (category === MEAL_CAT.EXISTING && !p.job_number) {
+    p.needs_job_match = true;   // no job known: Mary follows up and adds it
+  }
+}
 const MEAL_WIZARD_SENTINEL = '__MEALS_WIZARD__';
 
 // Loads kencal_gl_mapping including indirect_gl; if that column hasn't been
@@ -2549,7 +2615,7 @@ function onCategorySelect(value) {
     document.getElementById('rcpt-category-actual').value = value;
     document.getElementById('rcpt-meal-wizard').style.display = 'none';
   }
-  const gh = document.getElementById('rcpt-gas-hint'); if (gh) gh.style.display = hasIndirectRule(value) ? 'block' : 'none';
+  updateCategoryFormRules(value === MEAL_WIZARD_SENTINEL ? '' : value);
 }
 
 // Sets the form to reflect a category value already saved on a receipt
@@ -2568,12 +2634,13 @@ function selectMealCategoryValue(category) {
     document.getElementById('rcpt-category-actual').value = category;
     document.getElementById('rcpt-meal-wizard').style.display = 'none';
   }
-  const gh = document.getElementById('rcpt-gas-hint'); if (gh) gh.style.display = hasIndirectRule(category) ? 'block' : 'none';
+  updateCategoryFormRules(category);
 }
 
 function resetMealWizard(reopen) {
   document.getElementById('rcpt-category-actual').value = '';
   document.getElementById('rcpt-meal-result').style.display = 'none';
+  updateCategoryFormRules('');
   if (reopen) { startMealWizard(); }
   else {
     document.getElementById('rcpt-meal-wizard').style.display = 'none';
@@ -2591,30 +2658,34 @@ function startMealWizard() {
   `;
 }
 
+// Who was the meal for? Each answer maps straight to one category; the GL and
+// job are then worked out automatically (see effectiveGlJob). The job is never
+// read here, so the order the cardholder fills things in no longer matters.
+const MEAL_WHO_OPTIONS = [
+  ['existing',  'An existing customer',                                   MEAL_CAT.EXISTING],
+  ['potential', 'A potential customer or other business contact',        MEAL_CAT.POTENTIAL],
+  ['network',   'A business or networking event',                         MEAL_CAT.NETWORK],
+  ['office',    'The whole office (a celebration)',                       MEAL_CAT.OFFICE],
+  ['staff',     'A staff lunch at the office',                            MEAL_CAT.OFFICE],
+  ['worksite',  'Food for employees working at a job site',               MEAL_CAT.WORKSITE],
+  ['overnight', 'My own meal while traveling overnight on business',      MEAL_CAT.OVERNIGHT],
+  ['personal',  'Personal (no business purpose)',                         MEAL_CAT.PERSONAL]
+];
+
 function mealWizardStep(step) {
   const body = document.getElementById('rcpt-meal-wizard-body');
   if (step === 'entertainment') {
-    finishMealWizard('Entertainment (Non-Deductible)');
+    finishMealWizard(MEAL_CAT.ENTERTAINMENT);
     return;
   }
   if (step === 'who') {
     body.innerHTML = `
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Who was the meal with, and was business actually discussed?</div>
-      <button type="button" onclick="mealWizardStep('client')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">A client, prospect, or vendor — business was discussed</button>
-      <button type="button" onclick="mealWizardStep('office')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">The whole office/team — a celebration (birthday, etc.)</button>
-      <button type="button" onclick="mealWizardStep('selfjob')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">Just myself or coworkers, while working</button>
-      <button type="button" onclick="mealWizardStep('personal')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">Personal — no clear business purpose</button>
-    `;
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Who was the meal for?</div>` +
+      MEAL_WHO_OPTIONS.map(o => `<button type="button" onclick="mealWizardStep('${o[0]}')" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:white;cursor:pointer;">${o[1]}</button>`).join('');
     return;
   }
-  if (step === 'client') { finishMealWizard('Potential Business Meals (50% Deductible)'); return; }
-  if (step === 'office') { finishMealWizard('Office Celebration Meals (100% Deductible)'); return; }
-  if (step === 'personal') { finishMealWizard('Nondeductible Meals'); return; }
-  if (step === 'selfjob') {
-    const hasJob = !!document.getElementById('rcpt-job-number').value;
-    finishMealWizard(hasJob ? 'Meals - Direct (Job Cost)' : 'Meals Expense (50% Deductible)');
-    return;
-  }
+  const hit = MEAL_WHO_OPTIONS.find(o => o[0] === step);
+  if (hit) finishMealWizard(hit[2]);
 }
 
 function finishMealWizard(category) {
@@ -2622,6 +2693,7 @@ function finishMealWizard(category) {
   document.getElementById('rcpt-meal-wizard-body').innerHTML = '';
   document.getElementById('rcpt-meal-result').style.display = 'block';
   document.getElementById('rcpt-meal-result-text').textContent = 'Category: ' + category;
+  updateCategoryFormRules(category);
 }
 
 function canEditReceipt(createdAt) {
@@ -2684,6 +2756,7 @@ function renderMyReceipts(receipts) {
 function editReceipt(id) {
   const r = _myReceipts.find(x => x.id === id) || _allReceipts.find(x => x.id === id);
   if (!r) return;
+  _rcptEditCreatedAt = r.created_at || null;
   document.getElementById('rcpt-form-title').textContent = 'Edit Receipt';
   document.getElementById('rcpt-edit-id').value = r.id;
   document.getElementById('rcpt-date').value = r.expense_date;
@@ -2736,6 +2809,7 @@ function onNoReceiptToggle(checked) {
 }
 
 function resetReceiptForm() {
+  _rcptEditCreatedAt = null;
   const today = localToday();
   document.getElementById('rcpt-form-title').textContent = 'New Receipt';
   document.getElementById('rcpt-edit-id').value = '';
@@ -2749,7 +2823,7 @@ function resetReceiptForm() {
   document.getElementById('rcpt-vendor').value = '';
   document.getElementById('rcpt-amount').value = '';
   resetMealWizard();
-  const _gh = document.getElementById('rcpt-gas-hint'); if (_gh) _gh.style.display = 'none';
+  updateCategoryFormRules('');
   // Admin logging on someone else's behalf (from Receipts Log) must pick the
   // cardholder explicitly; otherwise default to the logged-in person.
   const _adminFromLog = _rcptFormOrigin === 'log' && state.supervisor && state.supervisor.receipts_admin;
@@ -2804,6 +2878,7 @@ async function submitReceipt() {
   if (!expenseDate) { toast('Please select a date'); return; }
   if (!amount || parseFloat(amount) <= 0) { toast('Please enter an amount'); return; }
   if (!category) { toast(document.getElementById('rcpt-category').value === MEAL_WIZARD_SENTINEL ? 'Please finish the meal questions above' : 'Please select a category'); return; }
+  if (noteRequiredNow(category) && !document.getElementById('rcpt-notes').value.trim()) { toast('Please say who was there and why'); document.getElementById('rcpt-notes').focus(); return; }
 
   const btn = document.getElementById('rcpt-submit-btn');
   btn.textContent = editId ? 'Saving…' : 'Submitting…';
@@ -2829,6 +2904,7 @@ async function submitReceipt() {
     photo_urls: _rcptPendingPhotos.length ? _rcptPendingPhotos : null,
     updated_at: new Date().toISOString(),
   };
+  applyCategoryJobRules(payload, category);
 
   try {
     if (editId) {
@@ -2884,6 +2960,7 @@ async function submitSplitReceipt() {
   if (!totalCharged || totalCharged <= 0) { toast('Please enter the total amount charged'); return; }
   if (!category) { toast(document.getElementById('rcpt-category').value === MEAL_WIZARD_SENTINEL ? 'Please finish the meal questions above' : 'Please select a category'); return; }
   if (_rcptSplitLines.some(l => !(parseFloat(l.pretax) > 0))) { toast('Enter a pre-tax amount for every job'); return; }
+  if (noteRequiredNow(category) && !document.getElementById('rcpt-notes').value.trim()) { toast('Please say who was there and why'); document.getElementById('rcpt-notes').focus(); return; }
 
   const { subtotal, taxShares, amounts } = computeSplitApportionment(_rcptSplitLines, tax);
   const computedTotal = Math.round((subtotal + tax) * 100) / 100;
@@ -2920,6 +2997,7 @@ async function submitSplitReceipt() {
     pretax_amount: Math.round((parseFloat(line.pretax)||0) * 100) / 100,
     tax_amount: taxShares[i],
   }));
+  payloads.forEach(p => applyCategoryJobRules(p, category));
 
   try {
     const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_receipts', {
@@ -3068,13 +3146,35 @@ function indirectGlFor(cat) {
   return v || (isGasCategory(cat) ? GAS_INDIRECT_GL_DEFAULT : '');
 }
 function hasIndirectRule(cat) { return !!indirectGlFor(cat); }
+// Rules added 2026-11-19 (Rick). They apply only to receipts submitted on/after
+// RULES_CUTOFF_YMD; older receipts keep the behavior above.
+//   - a category with ONLY a "no job" GL (overhead-only) always posts to that GL
+//     with job 90, even if a job was entered (Meals Expense (50%) is the exception:
+//     it keeps an entered job);
+//   - Meals - Existing Customer: job -> 4093 + job; no job -> 4540 flagged NEEDS MATCH
+//     so Mary can follow up (the wizard sets the flag).
+// Always (old and new receipts): Drop Shipment (1201) and Amex Clearing (2501)
+// show [NONE] as the job.
+const NO_JOB_CATEGORY_DEFAULTS = { 'drop shipment': '1201', 'amex clearing': '2501' };
+const NO_JOB_LABEL = '[NONE]';
+const JOB_KEEPING_OVERHEAD_CATS = ['Meals Expense (50% Deductible)'];
 function effectiveGlJob(r, glByCat) {
-  const catGl = ((glByCat && glByCat[r.category]) || '') || (isGasCategory(r.category) ? GAS_DIRECT_GL_DEFAULT : '');
+  const rawCatGl = ((glByCat && glByCat[r.category]) || '');
+  const noJobKey = String(r.category || '').trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(NO_JOB_CATEGORY_DEFAULTS, noJobKey)) {
+    return { gl: rawCatGl || NO_JOB_CATEGORY_DEFAULTS[noJobKey], job: NO_JOB_LABEL };
+  }
+  const catGl = rawCatGl || (isGasCategory(r.category) ? GAS_DIRECT_GL_DEFAULT : '');
   const job = r.job_number ? String(r.job_number).trim() : '';
   const indGl = indirectGlFor(r.category);
   if (indGl) {
+    const newRules = usesNewPostingRules(r);
+    if (newRules && !catGl) {
+      if (job && JOB_KEEPING_OVERHEAD_CATS.includes(r.category)) return { gl: indGl, job };
+      return { gl: indGl, job: INDIRECT_JOB };
+    }
     if (job) return { gl: catGl || '(no GL set)', job };
-    if (r.needs_job_match) return { gl: catGl || '(no GL set)', job: 'NEEDS MATCH' };
+    if (r.needs_job_match) return { gl: (newRules && r.category === MEAL_CAT.EXISTING) ? indGl : (catGl || '(no GL set)'), job: 'NEEDS MATCH' };
     return { gl: indGl, job: INDIRECT_JOB };
   }
   return { gl: catGl || '(no GL set)', job: job || (r.needs_job_match ? 'NEEDS MATCH' : '(no job — overhead)') };
@@ -4277,7 +4377,7 @@ async function deleteRecurringCharge(id) {
     </div>
     <div class="card">
       <div class="input-group">
-        <label class="field-label">Notes <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
+        <label class="field-label" id="rcpt-notes-label">Notes <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
         <textarea id="rcpt-notes" rows="3" placeholder="What was this for?…" style="resize:none;"></textarea>
       </div>
     </div>
