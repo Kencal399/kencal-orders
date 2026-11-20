@@ -2289,6 +2289,20 @@ async function loadReceiptLocations() {
   } catch(e) { _rcptLocs = []; }
 }
 
+// Typing in the job box (including deleting it) invalidates the job that was
+// previously picked. Without this, emptying the box left the old job number in
+// the hidden fields and the edit saved the old job again (found 2026-11-20).
+function onReceiptLocInput(value) {
+  const picked = document.getElementById('rcpt-loc-name').value;
+  if (!value.trim() || value !== picked) {
+    document.getElementById('rcpt-loc-id').value = '';
+    document.getElementById('rcpt-loc-name').value = '';
+    document.getElementById('rcpt-job-number').value = '';
+    document.getElementById('rcpt-needs-match').value = '';
+  }
+  filterReceiptLocations(value);
+}
+
 function filterReceiptLocations(query) {
   const dropdown = document.getElementById('rcpt-loc-dropdown');
   if (!query || query.length < 1) { dropdown.style.display = 'none'; return; }
@@ -2419,6 +2433,11 @@ function renderSplitLines() {
 }
 
 function filterSplitLocation(i, query) {
+  if (!query.trim() || query !== _rcptSplitLines[i].locName) {
+    _rcptSplitLines[i].locId = '';
+    _rcptSplitLines[i].jobNumber = '';
+    _rcptSplitLines[i].needsMatch = '';
+  }
   _rcptSplitLines[i].locName = query;
   const dropdown = document.getElementById(`split-loc-dropdown-${i}`);
   if (!query || query.length < 1) { dropdown.style.display = 'none'; return; }
@@ -2905,6 +2924,7 @@ async function submitReceipt() {
     updated_at: new Date().toISOString(),
   };
   applyCategoryJobRules(payload, category);
+  if (editId && !document.getElementById('rcpt-cardholder').value.trim()) delete payload.cardholder_name;  // keep the original cardholder
 
   try {
     if (editId) {
@@ -3828,6 +3848,18 @@ async function explainDeleteFailure(res, what) {
   return `Couldn't delete ${what}${info && info.message ? ': ' + info.message : ''}`;
 }
 
+// Plain-language reason when adding a category fails (instead of a blanket "check connection").
+async function explainAddFailure(res) {
+  let info = {};
+  try { info = await res.json(); } catch(e) {}
+  const code = info && info.code, status = res && res.status;
+  if (code === '23505' || status === 409)
+    return 'A category with that name already exists. Look for it in the list below (it may be hidden as Admin-only) or use a different name.';
+  if (code === '42501' || status === 401 || status === 403)
+    return "The database doesn't allow adding categories (permission). Ask Rick/Claude to check the table permissions.";
+  return `Couldn't add the category${info && info.message ? ': ' + info.message : ' (status ' + status + ')'}`;
+}
+
 async function deleteReceiptCategory(category) {
   if (!confirm(`Delete category "${category}"? This will not delete past receipts.`)) return;
   try {
@@ -3848,13 +3880,15 @@ async function addReceiptCategory() {
   const gl = document.getElementById('newcat-gl').value.trim();
   const glInd = (document.getElementById('newcat-gl-indirect-input') || {value:''}).value.trim();
   if (!name) { toast('Enter a category name'); return; }
+  const dup = (_rcptCategories || []).find(c => String(c.category || '').trim().toLowerCase() === name.toLowerCase());
+  if (dup) { toast(`"${dup.category}" already exists${dup.admin_only ? ' (it is hidden as Admin-only)' : ''}. Pick a different name.`); return; }
   try {
     const maxSort = _rcptCategories.reduce((m,c) => Math.max(m, c.sort_order||0), 0);
     const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_gl_mapping', {
       method: 'POST', headers: rcptHeaders({'Prefer':'return=minimal'}),
       body: JSON.stringify(Object.assign({category:name, gl_account: gl || null, sort_order: maxSort + 10}, (_glHasIndirectCol && glInd) ? {indirect_gl: glInd} : {}))
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) { toast(await explainAddFailure(res)); return; }
     document.getElementById('newcat-name').value = '';
     document.getElementById('newcat-gl').value = '';
     const _ni = document.getElementById('newcat-gl-indirect-input'); if (_ni) _ni.value = '';
@@ -4310,7 +4344,7 @@ async function deleteRecurringCharge(id) {
         <div class="input-group" style="margin-bottom:10px;">
           <label class="field-label">Job / location <span style="color:var(--text2);font-weight:400;">(optional)</span></label>
           <div style="position:relative;">
-            <input type="text" id="rcpt-loc-search" placeholder="Search jobs / locations, or 'Office'…" oninput="filterReceiptLocations(this.value)" onfocus="filterReceiptLocations(this.value)" autocomplete="off">
+            <input type="text" id="rcpt-loc-search" placeholder="Search jobs / locations, or 'Office'…" oninput="onReceiptLocInput(this.value)" onfocus="filterReceiptLocations(this.value)" autocomplete="off">
             <div id="rcpt-loc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:0.5px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
           </div>
           <div id="rcpt-manual-job-row" style="display:none;margin-top:8px;">
