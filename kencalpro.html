@@ -2765,7 +2765,7 @@ function renderMyReceipts(receipts) {
         <div style="font-size:14px;font-weight:600;">${r.vendor || '—'} · ${amountLabel}</div>
         <span class="badge badge-navy" style="flex-shrink:0;margin-left:8px;font-size:10px;">${r.category || '—'}</span>
       </div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.split_group_id ? ' · <span style="color:var(--navy);font-weight:600;">🔗 Split ('+r.split_group_id.replace(/^SPLIT-/,'')+')</span>' : ''}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.pushed_to_next_cycle ? ' · <span style="color:#7A5A12;font-weight:600;">⏭ Counts on the next statement</span>' : ''}${r.split_group_id ? ' · <span style="color:var(--navy);font-weight:600;">🔗 Split ('+r.split_group_id.replace(/^SPLIT-/,'')+')</span>' : ''}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
       ${editBtn}
     </div>`;
@@ -3101,12 +3101,15 @@ async function loadReceiptsLog() {
   const list = document.getElementById('rcpt-log-list');
   list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const [receipts, cats, sepSups] = await Promise.all([
+    const [receipts, cats, sepSups, cyc] = await Promise.all([
       sbFetch('kencal_receipts?order=expense_date.desc&limit=1000'),
       fetchGlMapping('category,gl_account'),
-      sbFetch('kencal_supervisors?select=name&separate_statement=eq.true')
+      sbFetch('kencal_supervisors?select=name&separate_statement=eq.true'),
+      sbFetch('kencal_statement_cycles?select=id,card_group,end_date&order=end_date').catch(() => null)
     ]);
     _allReceipts = receipts || [];
+    _pushColsAvailable = !_allReceipts.length || ('pushed_to_next_cycle' in _allReceipts[0]);
+    setCycleData(cyc);
     _rcptCategories = cats || [];
     _rcptSeparateStatementNames = (sepSups||[]).map(s => s.name);
     const catSel = document.getElementById('rcptlog-cat-filter');
@@ -3276,7 +3279,7 @@ function filterReceiptsLog() {
         <div style="font-size:14px;font-weight:600;">${r.vendor || '—'} · ${amountLabel}</div>
         <span class="badge badge-navy" style="flex-shrink:0;margin-left:8px;font-size:10px;">${r.category || '—'}</span>
       </div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.needs_job_match ? ' · <span style="color:var(--attn);font-weight:600;">⚠ Needs job match</span>' : ''}${r.no_receipt ? ' · <span style="color:#7A5A12;font-weight:600;">📭 No receipt exists</span>' : ''}${r.drop_shipment ? ' · <span style="color:var(--navy);font-weight:600;">📦 Drop shipment</span>' : ''}${r.split_group_id ? ' · <span style="color:var(--navy);font-weight:600;">🔗 Split ('+r.split_group_id.replace(/^SPLIT-/,'')+')</span>' : ''}${isSeparateStatementReceipt(r) ? ' · <span style="color:#7A5A12;font-weight:600;">🏢 Separate company statement</span>' : ''}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:2px;">${dateLabel}${r.location_name ? ' · ' + r.location_name : ''}${r.needs_job_match ? ' · <span style="color:var(--attn);font-weight:600;">⚠ Needs job match</span>' : ''}${r.no_receipt ? ' · <span style="color:#7A5A12;font-weight:600;">📭 No receipt exists</span>' : ''}${r.drop_shipment ? ' · <span style="color:var(--navy);font-weight:600;">📦 Drop shipment</span>' : ''}${r.split_group_id ? ' · <span style="color:var(--navy);font-weight:600;">🔗 Split ('+r.split_group_id.replace(/^SPLIT-/,'')+')</span>' : ''}${isSeparateStatementReceipt(r) ? ' · <span style="color:#7A5A12;font-weight:600;">🏢 Separate company statement</span>' : ''}${pushBadge(r)}</div>
       <div style="font-size:12px;color:var(--text2);">${r.cardholder_name || r.submitted_by || '—'}${cardLabel} · logged by ${r.submitted_by || '—'}</div>
       ${r.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;font-style:italic;">"${r.notes}"</div>` : ''}
       ${r.photo_urls && r.photo_urls.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.photo_urls.map(u=>attachmentTileHtml(u,60)).join('')}</div>` : ''}
@@ -3284,6 +3287,7 @@ function filterReceiptsLog() {
         <label style="font-size:12px;color:var(--text2);">Category</label>
         <select onchange="changeReceiptCategory(${r.id}, this)" style="flex:1;min-width:140px;font-size:12px;border-radius:8px;border:0.5px solid var(--border);padding:6px 8px;">${catOptions}</select>
       </div>
+      ${(_cyclesAvailable && _pushColsAvailable) ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-top:8px;cursor:pointer;"><input type="checkbox" ${r.pushed_to_next_cycle ? 'checked' : ''} onchange="togglePushReceipt(${r.id}, this)"> Push to next statement cycle</label>` : ''}
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button onclick="editReceiptFromLog(${r.id})" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">Edit</button>
         <button onclick="deleteReceiptFromLog(${r.id})" style="background:#fff;color:var(--fail);border:1px solid var(--fail);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">Delete</button>
@@ -3372,6 +3376,7 @@ function openReceiptsCsvExport() {
   sel.innerHTML = '<option value="">All cardholders</option>' +
     receiptCardholderNames().map(n => `<option value="${n.replace(/"/g,'&quot;')}">Just ${n}</option>`).join('');
   sel.value = '';
+  refreshCyclePicker('rcsv');
   showScreen('s-receipts-csv');
 }
 
@@ -3385,15 +3390,15 @@ function exportReceiptsCSV() {
   const glByCat = {};
   _rcptCategories.forEach(c => glByCat[c.category] = c.gl_account || '');
   let rows = _allReceipts.filter(r =>
-    (!from || r.expense_date >= from) &&
-    (!to || r.expense_date <= to) &&
+    (!from || reportDate(r) >= from) &&
+    (!to || reportDate(r) <= to) &&
     (!forName || cardholderKey(r).toLowerCase() === forName.toLowerCase()) &&
     (!suppliesOnly || isSuppliesCategory(r.category)) &&
     (!dropShipOnly || r.drop_shipment)
   );
   if (!rows.length) { toast('No receipts match those choices'); return; }
-  rows.sort((a,b) => (a.expense_date||'').localeCompare(b.expense_date||'') || cardholderKey(a).localeCompare(cardholderKey(b)));
-  const headers = ['Date','Cardholder','Card Last 4','Vendor','Amount','Category','GL Account','Job Number','Location','Submitted By','No Receipt','Drop Shipment','Separate Company Statement','Split Ref','Notes','Photo/PDF URL(s)'];
+  rows.sort((a,b) => (reportDate(a)||'').localeCompare(reportDate(b)||'') || cardholderKey(a).localeCompare(cardholderKey(b)));
+  const headers = ['Date','Cardholder','Card Last 4','Vendor','Amount','Category','GL Account','Job Number','Location','Submitted By','No Receipt','Drop Shipment','Separate Company Statement','Split Ref','Notes','Photo/PDF URL(s)','Statement Date','Pushed to Next Cycle'];
   const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
   const lines = [headers.map(esc).join(',')];
   rows.forEach(r => {
@@ -3407,7 +3412,8 @@ function exportReceiptsCSV() {
       r.category, csvGl, csvJob, r.location_name,
       r.submitted_by, r.no_receipt ? 'Yes' : '', r.drop_shipment ? 'Yes' : '',
       isSeparateStatementReceipt(r) ? 'Yes' : '',
-      r.split_group_id ? r.split_group_id.replace(/^SPLIT-/,'') : '', r.notes, (r.photo_urls||[]).join(' | ')
+      r.split_group_id ? r.split_group_id.replace(/^SPLIT-/,'') : '', r.notes, (r.photo_urls||[]).join(' | '),
+      reportDate(r), r.pushed_to_next_cycle ? 'Yes' : ''
     ].map(esc).join(','));
   });
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
@@ -3475,6 +3481,190 @@ async function saveJobSite() {
   }
 }
 
+// ── STATEMENT CYCLES + "PUSH TO NEXT CYCLE" (Rick, 2026-11) ───────────────
+// AMEX statement periods float, and the separate-company card has its own. Mary
+// enters each statement's closing date once; a cycle runs from the day after the
+// previous closing date through its own. A charge that posted after the close can
+// be "pushed" (once) so reports count it in the NEXT cycle and match the statement.
+// Reports use the statement date: the receipt's own date, or the day after its
+// cycle closed when pushed. Needs the kencal_statement_cycles table and the
+// pushed_* columns on kencal_receipts (SQL given to Rick); without them none of
+// this shows and everything works as before.
+let _rcptCycles = { main: [], separate: [] };   // ascending closing dates (YYYY-MM-DD)
+let _cycleRows = [];
+let _cyclesAvailable = false;
+let _pushColsAvailable = true;
+function setCycleData(rows) {
+  _rcptCycles = { main: [], separate: [] };
+  if (!Array.isArray(rows)) { _cyclesAvailable = false; _cycleRows = []; return; }
+  _cyclesAvailable = true; _cycleRows = rows;
+  rows.forEach(c => { (_rcptCycles[c.card_group] = _rcptCycles[c.card_group] || []).push(String(c.end_date).slice(0,10)); });
+  Object.keys(_rcptCycles).forEach(k => _rcptCycles[k].sort());
+}
+async function reloadCycles() {
+  const rows = await sbFetch('kencal_statement_cycles?select=id,card_group,end_date&order=end_date').catch(() => null);
+  setCycleData(rows);
+}
+function cycleGroupOf(r) { return isSeparateStatementReceipt(r) ? 'separate' : 'main'; }
+function addDaysYmd(ymd, n) { const d = ymdToLocalDate(ymd); d.setDate(d.getDate() + n); return ymdOfTimestamp(d); }
+function cycleEndFor(group, ymd) { return (_rcptCycles[group] || []).find(e => e >= ymd) || null; }
+function cycleStartFor(group, end) { const a = _rcptCycles[group] || []; const i = a.indexOf(end); return i > 0 ? addDaysYmd(a[i-1], 1) : null; }
+function niceDate(ymd, withYear) { return ymdToLocalDate(ymd).toLocaleDateString('en-US', withYear ? { month:'short', day:'numeric', year:'numeric' } : { month:'short', day:'numeric' }); }
+// The date a report uses for this receipt.
+function reportDate(r) {
+  if (!r.pushed_to_next_cycle) return r.expense_date;
+  const end = cycleEndFor(cycleGroupOf(r), r.expense_date);
+  return end ? addDaysYmd(end, 1) : r.expense_date;
+}
+function carriedTag(r) {
+  return (r.pushed_to_next_cycle && reportDate(r) !== r.expense_date)
+    ? ` <span style="color:#7A5A12;font-weight:700;">(carried in from prior cycle, dated ${niceDate(r.expense_date)})</span>` : '';
+}
+// Small badges for the Receipts Log: pushed, or dated at the very end of a recent cycle.
+function pushBadge(r) {
+  if (!_cyclesAvailable || !_pushColsAvailable) return '';
+  if (r.pushed_to_next_cycle) return ' · <span style="color:#7A5A12;font-weight:600;">⏭ Pushed to next statement cycle</span>';
+  const end = cycleEndFor(cycleGroupOf(r), r.expense_date);
+  if (end && end >= addDaysYmd(localToday(), -45) && ymdToLocalDate(end) - ymdToLocalDate(r.expense_date) <= 86400000)
+    return ' · <span style="color:var(--attn);font-weight:600;">🕒 Dated at statement close</span>';
+  return '';
+}
+
+async function togglePushReceipt(id, cb) {
+  const r = _allReceipts.find(x => x.id === id);
+  if (!r) return;
+  if (!(state.supervisor && state.supervisor.receipts_admin)) { toast('Admins only'); cb.checked = !!r.pushed_to_next_cycle; return; }
+  const want = cb.checked;
+  if (want) {
+    const group = cycleGroupOf(r);
+    const end = cycleEndFor(group, r.expense_date);
+    if (!end) { toast("Add this statement's closing date first (Statement Cycles button)."); cb.checked = false; return; }
+    const eff = addDaysYmd(end, 1);
+    const amt = `$${parseFloat(r.amount||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+    let msg = `Push ${r.vendor || 'this receipt'} (${amt}, ${niceDate(r.expense_date, true)}) to the next statement cycle?\n\nIt will drop off the report for the cycle closing ${niceDate(end, true)} and appear in the next one.`;
+    if (eff.slice(0,4) !== r.expense_date.slice(0,4)) msg += `\n\nYEAR-END WARNING: this moves the charge into ${eff.slice(0,4)}. A charge made in ${r.expense_date.slice(0,4)} normally belongs in ${r.expense_date.slice(0,4)}'s books for tax purposes. Continue?`;
+    if (!confirm(msg)) { cb.checked = false; return; }
+  }
+  try {
+    const now = new Date().toISOString();
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_receipts?id=eq.${id}`, {
+      method: 'PATCH', headers: rcptHeaders({'Prefer':'return=representation'}),
+      body: JSON.stringify({ pushed_to_next_cycle: want, pushed_by: want ? state.supervisor.name : null, pushed_at: want ? now : null, updated_at: now })
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !Array.isArray(body) || !body.length) throw new Error((body && body.message) || 'not saved');
+    r.pushed_to_next_cycle = want; r.pushed_by = want ? state.supervisor.name : null; r.pushed_at = want ? now : null;
+    toast(want ? 'Pushed to the next cycle ✓' : 'Back in its own cycle ✓');
+    filterReceiptsLog();
+  } catch(e) {
+    cb.checked = !!r.pushed_to_next_cycle;
+    toast("Couldn't save the change. If this is the first time, the one-time database update for statement cycles may not have been run yet.");
+  }
+}
+
+// ── Statement Cycles screen ──
+function openStatementCycles() {
+  const sel = document.getElementById('cyc-group');
+  const sepNames = (_rcptSeparateStatementNames || []).join(', ');
+  sel.innerHTML = '<option value="main">Main AMEX statement</option>' + (sepNames ? `<option value="separate">Separate-company statement (${sepNames})</option>` : '');
+  sel.value = 'main';
+  document.getElementById('cyc-end').value = '';
+  renderStatementCycles();
+  showScreen('s-receipts-cycles');
+}
+function renderStatementCycles() {
+  const list = document.getElementById('cyc-list');
+  const form = document.getElementById('cyc-form');
+  if (!_cyclesAvailable) {
+    form.style.display = 'none';
+    list.innerHTML = '<div class="card" style="font-size:13px;color:#7A5A12;background:#FFF8E6;">The statement-cycle table has not been set up in the database yet. Run the one-time Statement Cycles SQL in Supabase, then come back to this screen.</div>';
+    return;
+  }
+  form.style.display = '';
+  const g = document.getElementById('cyc-group').value;
+  const ends = (_rcptCycles[g] || []).slice().reverse();
+  if (!ends.length) { list.innerHTML = '<div style="font-size:13px;color:var(--text2);padding:8px;">No closing dates entered yet.</div>'; return; }
+  list.innerHTML = ends.map(end => {
+    const start = cycleStartFor(g, end);
+    const inCycle = (_allReceipts || []).filter(r => cycleGroupOf(r) === g && reportDate(r) <= end && (!start || reportDate(r) >= start));
+    const pushedOut = (_allReceipts || []).filter(r => cycleGroupOf(r) === g && r.pushed_to_next_cycle && cycleEndFor(g, r.expense_date) === end).length;
+    const row = _cycleRows.find(c => c.card_group === g && String(c.end_date).slice(0,10) === end);
+    return `<div class="card" style="margin-bottom:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div>
+        <div style="font-size:14px;font-weight:600;">${start ? niceDate(start, true) : 'Earlier'} – ${niceDate(end, true)}</div>
+        <div style="font-size:12px;color:var(--text2);">${inCycle.length} receipt${inCycle.length!==1?'s':''} on this statement${pushedOut ? ' · ' + pushedOut + ' pushed out to the next cycle' : ''}</div>
+      </div>
+      ${row ? `<button onclick="deleteStatementCycle(${row.id})" style="background:#fff;color:var(--fail);border:1px solid var(--fail);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">Remove</button>` : ''}
+    </div>`;
+  }).join('');
+}
+async function addStatementCycle() {
+  const g = document.getElementById('cyc-group').value;
+  const end = document.getElementById('cyc-end').value;
+  if (!end) { toast('Pick the statement closing date'); return; }
+  if ((_rcptCycles[g] || []).includes(end)) { toast('That closing date is already entered'); return; }
+  const btn = document.getElementById('cyc-add-btn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/kencal_statement_cycles', {
+      method: 'POST', headers: rcptHeaders({'Prefer':'return=minimal'}),
+      body: JSON.stringify({ card_group: g, end_date: end, created_by: state.supervisor && state.supervisor.name })
+    });
+    if (!res.ok) {
+      let info = {}; try { info = await res.json(); } catch(e) {}
+      toast(info.code === '23505' ? 'That closing date is already entered' : (info.code === '42501' ? "The database doesn't allow adding closing dates (permission). Ask Rick/Claude to check the table grants." : `Couldn't add the closing date${info.message ? ': ' + info.message : ''}`));
+      return;
+    }
+    document.getElementById('cyc-end').value = '';
+    await reloadCycles();
+    renderStatementCycles();
+    toast('Closing date added ✓');
+  } catch(e) { toast('Error adding — check connection'); }
+  finally { btn.disabled = false; btn.textContent = '+ Add closing date'; }
+}
+async function deleteStatementCycle(id) {
+  if (!confirm('Remove this closing date? The cycle before and after it will merge into one. Receipts are not changed.')) return;
+  try {
+    const res = await fetch(SUPABASE_URL + `/rest/v1/kencal_statement_cycles?id=eq.${id}`, { method: 'DELETE', headers: rcptHeaders({'Prefer':'return=representation'}) });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !Array.isArray(body) || !body.length) { toast(res.status === 403 || res.status === 401 ? "The database doesn't allow removing closing dates (permission)." : 'Nothing was removed'); return; }
+    await reloadCycles();
+    renderStatementCycles();
+    toast('Removed ✓');
+  } catch(e) { toast('Error removing — check connection'); }
+}
+
+// ── Cycle pickers on the PDF and CSV screens (fill in From / To) ──
+function cyclePickerGroup(prefix) {
+  const v = (document.getElementById(prefix + '-for') || {}).value || '';
+  if (!v || v.startsWith('__')) return 'main';
+  return (_rcptSeparateStatementNames || []).some(n => n.trim().toLowerCase() === v.trim().toLowerCase()) ? 'separate' : 'main';
+}
+function refreshCyclePicker(prefix) {
+  const wrap = document.getElementById(prefix + '-cycle-group');
+  const sel = document.getElementById(prefix + '-cycle');
+  if (!wrap || !sel) return;
+  const g = cyclePickerGroup(prefix);
+  const ends = (_rcptCycles[g] || []).slice().reverse();
+  if (!_cyclesAvailable || !ends.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+  wrap.style.display = '';
+  sel.innerHTML = '<option value="">— Pick a statement cycle (optional) —</option>' + ends.map(end => {
+    const start = cycleStartFor(g, end);
+    return `<option value="${start || ''}|${end}">${start ? niceDate(start, true) : 'Earlier'} – ${niceDate(end, true)}</option>`;
+  }).join('');
+  const hint = document.getElementById(prefix + '-cycle-hint');
+  if (hint) hint.textContent = g === 'separate' ? 'Showing the separate-company statement cycles.' : 'Main AMEX statement cycles. Receipts pushed to the next cycle count in the next one.';
+}
+function onCyclePicked(prefix) {
+  const v = document.getElementById(prefix + '-cycle').value;
+  if (!v) return;
+  const [start, end] = v.split('|');
+  let from = start;
+  if (!from) { const all = (_allReceipts || []).map(reportDate).sort(); from = (all.length && all[0] < end) ? all[0] : end; }
+  document.getElementById(prefix === 'rprt' ? 'rprt-from' : 'rcsv-from').value = from;
+  document.getElementById(prefix === 'rprt' ? 'rprt-to' : 'rcsv-to').value = end;
+}
+
 // ── PDF REPORT (ADMIN) ──────────────────────────────────
 function openReceiptsPdfExport() {
   document.getElementById('rprt-from').value = '';
@@ -3490,6 +3680,7 @@ function openReceiptsPdfExport() {
     receiptCardholderNames().map(n => `<option value="${n.replace(/"/g,'&quot;')}">Just ${n}</option>`).join('');
   forSel.value = '__combined__';
   onRprtForChange();
+  refreshCyclePicker('rprt');
   showScreen('s-receipts-pdf');
 }
 
@@ -3499,6 +3690,7 @@ function onRprtForChange() {
   const combined = document.getElementById('rprt-for').value === '__combined__';
   document.getElementById('rprt-check-group').style.display = combined ? '' : 'none';
   document.getElementById('rprt-for-hint').style.display = combined ? 'none' : 'block';
+  refreshCyclePicker('rprt');
 }
 
 function generateReceiptsPdfReport() {
@@ -3512,7 +3704,7 @@ function generateReceiptsPdfReport() {
   const glByCat = {};
   _rcptCategories.forEach(c => glByCat[c.category] = c.gl_account || '');
 
-  const allRows = (_allReceipts || []).filter(r => r.expense_date >= from && r.expense_date <= to);
+  const allRows = (_allReceipts || []).filter(r => reportDate(r) >= from && reportDate(r) <= to);
 
   // Separate-statement cardholders (e.g. Yobanny Avila) work for a
   // different company with its own AMEX account — Rick doesn't reconcile
@@ -3569,7 +3761,7 @@ function generateReceiptsPdfReport() {
         <tr>
           <td>${dateLabel(r.expense_date)}</td>
           <td>${r.cardholder_name || r.submitted_by || 'Unknown'}</td>
-          <td>${r.vendor || '—'}${r.needs_job_match ? ' <span style="color:#A32D2D;font-weight:700;">(needs job match)</span>' : ''}${r.no_receipt ? ' <span style="color:#7A5A12;font-weight:700;">(no receipt on file)</span>' : ''}${splitBadge(r)}</td>
+          <td>${r.vendor || '—'}${carriedTag(r)}${r.needs_job_match ? ' <span style="color:#A32D2D;font-weight:700;">(needs job match)</span>' : ''}${r.no_receipt ? ' <span style="color:#7A5A12;font-weight:700;">(no receipt on file)</span>' : ''}${splitBadge(r)}</td>
           <td style="text-align:right;">${fmt(r.amount)}</td>
         </tr>`).join('');
       return `
@@ -3590,7 +3782,7 @@ function generateReceiptsPdfReport() {
       <tr>
         <td>${dateLabel(r.expense_date)}</td>
         <td>${r.cardholder_name || r.submitted_by || 'Unknown'}</td>
-        <td>${r.vendor || '—'}</td>
+        <td>${r.vendor || '—'}${carriedTag(r)}</td>
         <td>${r.job_number || r.location_name || '—'}</td>
         <td style="text-align:right;">${fmt(r.amount)}</td>
       </tr>`).join('');
@@ -3610,7 +3802,7 @@ function generateReceiptsPdfReport() {
       const items = receipts.map(r => `
         <div class="rprt-receipt">
           <div class="details">
-            <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'} · ${fmt(r.amount)}${nameOnEachReceipt ? ' · <span style="color:#555;">'+name+'</span>' : ''}</div>
+            <div><b>${dateLabel(r.expense_date)}</b> · ${r.vendor||'—'}${carriedTag(r)} · ${fmt(r.amount)}${nameOnEachReceipt ? ' · <span style="color:#555;">'+name+'</span>' : ''}</div>
             <div>Category: ${r.category||'—'} ${r.needs_job_match ? '<span style="color:#A32D2D;font-weight:700;"> (needs job match)</span>' : ''}${r.no_receipt ? '<span style="color:#7A5A12;font-weight:700;"> (no receipt on file)</span>' : ''}${r.drop_shipment ? '<span style="color:#1B2A4A;font-weight:700;"> (📦 drop shipment — see Drop Shipments section)</span>' : ''}${splitBadge(r)}</div>
             <div>Job/Location: ${r.location_name || '—'}${r.job_number ? ' ('+r.job_number+')' : ''}</div>
             ${r.notes ? `<div>Notes: ${r.notes}</div>` : ''}
@@ -4510,6 +4702,7 @@ async function deleteRecurringCharge(id) {
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openAddJobSite()">📍 Add Job Site</button>
+      <button class="btn-secondary" style="flex:1;margin:0;padding:8px;font-size:12px;" onclick="openStatementCycles()">📅 Statement Cycles</button>
     </div>
   </div>
   <div class="scroll-body" style="padding-top:8px;">
@@ -4567,6 +4760,11 @@ async function deleteRecurringCharge(id) {
   <div class="scroll-body">
     <div class="card">
       <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">Pick a date range, or leave both blank for every receipt.</div>
+      <div class="input-group" id="rcsv-cycle-group" style="margin-bottom:10px;display:none;">
+        <label class="field-label">Statement cycle <span style="color:var(--text2);font-weight:400;">(optional, fills in the dates)</span></label>
+        <select id="rcsv-cycle" onchange="onCyclePicked('rcsv')"></select>
+        <div id="rcsv-cycle-hint" style="font-size:11px;color:var(--text2);margin-top:4px;"></div>
+      </div>
       <div class="input-row" style="margin-bottom:10px;">
         <div class="input-group">
           <label class="field-label">From</label>
@@ -4579,7 +4777,7 @@ async function deleteRecurringCharge(id) {
       </div>
       <div class="input-group" style="margin-bottom:10px;">
         <label class="field-label">Export for</label>
-        <select id="rcsv-for"></select>
+        <select id="rcsv-for" onchange="refreshCyclePicker('rcsv')"></select>
       </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);margin-bottom:8px;">
         <input type="checkbox" id="rcsv-supplies"> Supplies category only
@@ -4604,6 +4802,11 @@ async function deleteRecurringCharge(id) {
   <div class="scroll-body">
     <div class="card">
       <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">Pick the statement period — doesn't need to match a calendar month.</div>
+      <div class="input-group" id="rprt-cycle-group" style="margin-bottom:10px;display:none;">
+        <label class="field-label">Statement cycle <span style="color:var(--text2);font-weight:400;">(optional, fills in the dates)</span></label>
+        <select id="rprt-cycle" onchange="onCyclePicked('rprt')"></select>
+        <div id="rprt-cycle-hint" style="font-size:11px;color:var(--text2);margin-top:4px;"></div>
+      </div>
       <div class="input-row" style="margin-bottom:10px;">
         <div class="input-group">
           <label class="field-label">From</label>
@@ -4625,6 +4828,32 @@ async function deleteRecurringCharge(id) {
       </div>
     </div>
     <button class="btn-primary" onclick="generateReceiptsPdfReport()">Generate Report</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     RECEIPTS - STATEMENT CYCLES (ADMIN)
+══════════════════════════════════════════ -->
+<div class="screen" id="s-receipts-cycles">
+  <div class="top-bar">
+    <button class="top-bar-back" onclick="showScreen('s-receipts-log');loadReceiptsLog()">‹</button>
+    <div class="top-bar-title">Statement Cycles</div>
+    <div class="top-bar-logo">Kencal Pro</div>
+  </div>
+  <div class="scroll-body">
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;">Enter each AMEX statement's closing date. A cycle runs from the day after the previous closing date to its own. On the Receipts Log, a charge that posted after the close can be pushed (once) to the next cycle so the reports match the statement.</div>
+    <div class="input-group" style="margin-top:10px;">
+      <label class="field-label">Statement</label>
+      <select id="cyc-group" onchange="renderStatementCycles()"></select>
+    </div>
+    <div class="card" id="cyc-form">
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="field-label">Closing date of the statement</label>
+        <input type="date" id="cyc-end">
+      </div>
+      <button class="btn-primary" id="cyc-add-btn" style="margin:0;" onclick="addStatementCycle()">+ Add closing date</button>
+    </div>
+    <div id="cyc-list"></div>
   </div>
 </div>
 
